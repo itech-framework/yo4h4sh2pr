@@ -1,11 +1,16 @@
 package io.github.itech_framework.core.exceptions;
 
 public class FrameworkException extends RuntimeException {
-    public FrameworkException(String message) {
-        super(message + "\nJPA Setup Guide: https://yourframework.com/jpa-setup");
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 7238973558395813814L;
+
+	public FrameworkException(String message) {
+        super(message);
     }
 
     public FrameworkException(String message, Exception e) {
-        super(message + "\nJPA Setup Guide: https://yourframework.com/jpa-setup", e);
+        super(message, e);
     }
 }

@@ -1,6 +1,4 @@
-package io.github.itech_framework.core.annotations.reactives;
-
-import io.github.itech_framework.core.annotations.components.Component;
+package io.github.itech_framework.core.annotations.dependency;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -8,35 +6,30 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Primary annotation for dependency injection of reactive components
+ * Primary annotation for dependency injection of component references
  * <p>
- * Automatically injects reactive component instances into fields during initialization.
- * Supports both type-based and name-based injection strategies for reactive streams
- * and asynchronous components.
+ * Automatically injects component instances into fields during initialization.
+ * Supports both type-based and name-based injection strategies.
  * </p>
  *
  * <p>Example usage:</p>
  * <pre>{@code
  * // Type-based injection
- * @Rx
+ * @Use
  * private UserService userService;
  * 
  * // Named component injection
- * @Rx(name = "authService")
+ * @Use(name = "authService")
  * private AuthService authComponent;
  * }</pre>
  *
  * @author Sai Zaw Myint
- * @since 1.0.0
- * @see Component
- * @deprecated Since 1.0.11, use {@link io.github.itech_framework.core.annotations.dependency.Use} instead.
- * This annotation was renamed to better reflect its purpose as a component reference rather than reactive programming.
+ * @since 1.0.11
+ * @see io.github.itech_framework.core.annotations.components.Component
  */
-@Deprecated(since = "1.0.11", forRemoval = true)
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
-@SuppressWarnings({"unused", "RedundantSuppression"})
-public @interface Rx {
+public @interface Use {
     /**
      * Specifies a named component for qualified injection
      * <p>

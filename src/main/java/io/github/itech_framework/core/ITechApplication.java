@@ -22,6 +22,7 @@ public class ITechApplication {
      * Initializes and starts the ITech framework application
      * @param clazz The main application class used as the starting point 
      *              for component scanning and dependency injection setup
+     * @throws Exception 
      * @throws RuntimeException if the application fails to initialize 
      *         components properly. The exception will contain the root 
      *         cause of the failure
@@ -33,13 +34,8 @@ public class ITechApplication {
      *   <li>Handle any initialization errors by logging and rethrowing</li>
      * </ul>
      */
-    public static void run(Class<?> clazz) {
-        try {
-            ComponentProcessor.initialize(clazz);
-            logger.debug("Components initialized!");
-        } catch (Exception e) {
-            logger.error("Application fails to start! {}", e.getMessage());
-            throw new RuntimeException(e);
-        }
+    public static void run(Class<?> clazz) throws Exception {
+    	ComponentProcessor.initialize(clazz);
+        logger.debug("Components initialized!");
     }
 }
