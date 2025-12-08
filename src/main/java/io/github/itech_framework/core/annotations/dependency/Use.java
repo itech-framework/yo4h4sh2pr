@@ -41,4 +41,5 @@ public @interface Use {
      * @return The unique name of the component to inject
      */
     String name() default "";
+    boolean share() default true;
 }

@@ -8,10 +8,13 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -54,10 +57,11 @@ public class ComponentProcessor {
 	public static final Set<String> JPA_ENTITY_ANNOTATIONS = Set.of("javax.persistence.Entity",
 			"jakarta.persistence.Entity");
 	private static boolean apiClientsEnabled = false;
-	
+
 	private static boolean javaFxEnabled = false;
 
 	private static final Logger logger = LogManager.getLogger(ComponentProcessor.class);
+	private static final ThreadLocal<Set<Class<?>>> CREATING_INSTANCES = ThreadLocal.withInitial(HashSet::new);
 
 	public static void initialize(Class<?> clazz) throws Exception {
 		logger.debug("Initializing component...");
@@ -361,36 +365,169 @@ public class ComponentProcessor {
 	@SuppressWarnings("removal")
 	private static void processDependencyField(Object instance, Field field) throws IllegalAccessException {
 		String componentName = "";
-//		boolean isDeprecatedAnnotation = false;
-		
-		// Check which annotation is present and get the component name
+		boolean share = true;
+
+		// Check which annotation is present
 		if (field.isAnnotationPresent(Rx.class)) {
 			Rx rxAnnotation = field.getAnnotation(Rx.class);
 			componentName = rxAnnotation.name();
-//			isDeprecatedAnnotation = true;
-			
-			// Log deprecation warning
-			logger.warn("@Rx annotation is deprecated and will be removed in future versions. " +
-					   "Please use @Use instead in class: {}", field.getDeclaringClass().getName());
+			logger.warn("@Rx annotation is deprecated and will be removed in future versions. "
+					+ "Please use @Use instead in class: {}", field.getDeclaringClass().getName());
 		} else if (field.isAnnotationPresent(Use.class)) {
 			Use componentRefAnnotation = field.getAnnotation(Use.class);
 			componentName = componentRefAnnotation.name();
+			share = componentRefAnnotation.share();
 		}
 
-		// Use field type name if no specific name provided
-		String key = componentName.isEmpty() ? field.getType().getName() : componentName;
+		// Get the component
+		Object component = resolveComponentForField(field, componentName, share);
 
-		Object component = ComponentStore.components.get(key);
 		if (component == null) {
-			throw new IllegalStateException("Missing component for key: " + key);
+			throw new IllegalStateException("Missing component for field: " + field.getName() + " in class: "
+					+ field.getDeclaringClass().getName());
 		}
 
 		if (!field.getType().isAssignableFrom(component.getClass())) {
-			throw new ClassCastException("Component type mismatch for field " + field.getName());
+			throw new ClassCastException("Component type mismatch for field " + field.getName() + ". Expected: "
+					+ field.getType().getName() + ", Got: " + component.getClass().getName());
 		}
 
+		// Inject the component
 		field.setAccessible(true);
 		field.set(instance, component);
+	}
+
+	private static Object resolveComponentForField(Field field, String componentName, boolean share) {
+		Class<?> fieldType = field.getType();
+		String key = componentName.isEmpty() ? fieldType.getName() : componentName;
+
+		if (share) {
+			// Get from ComponentStore
+			return ComponentStore.components.get(key);
+		} else {
+			// Create new instance with cycle detection
+			Class<?> componentClass = determineComponentClass(fieldType, componentName);
+			return createNewInstance(componentClass);
+		}
+	}
+
+	private static Class<?> determineComponentClass(Class<?> fieldType, String componentName) {
+		if (!componentName.isEmpty()) {
+			Object registeredComponent = findRegisteredComponentByName(componentName);
+			if (registeredComponent != null) {
+				return registeredComponent.getClass();
+			}
+		}
+
+		if (fieldType.isInterface()) {
+			for (Map.Entry<String, Object> entry : ComponentStore.components.entrySet()) {
+				if (fieldType.isAssignableFrom(entry.getValue().getClass())) {
+					return entry.getValue().getClass();
+				}
+			}
+
+			throw new IllegalStateException("Cannot determine concrete implementation for interface: "
+					+ fieldType.getName() + ". Please specify a component name or register a concrete implementation.");
+		}
+
+		return fieldType;
+	}
+
+	private static Object findRegisteredComponentByName(String name) {
+		Object component = ComponentStore.components.get(name);
+		if (component != null) {
+			return component;
+		}
+
+		for (Map.Entry<String, Object> entry : ComponentStore.components.entrySet()) {
+			String simpleName = entry.getKey();
+			if (simpleName.contains(".")) {
+				simpleName = simpleName.substring(simpleName.lastIndexOf('.') + 1);
+			}
+			if (simpleName.equals(name)) {
+				return entry.getValue();
+			}
+		}
+
+		return null;
+	}
+
+	private static Object createNewInstance(Class<?> clazz) {
+		Set<Class<?>> creating = CREATING_INSTANCES.get();
+
+		if (creating.contains(clazz)) {
+			throw new FrameworkException("Circular dependency detected while creating instance of " + clazz.getName()
+					+ ". Current creation chain: "
+					+ creating.stream().map(Class::getSimpleName).collect(Collectors.joining(" -> ")) + " -> "
+					+ clazz.getSimpleName());
+		}
+
+		creating.add(clazz);
+		try {
+			Constructor<?> constructor = findSuitableConstructor(clazz);
+
+			Object[] args = Arrays.stream(constructor.getParameters())
+					.map(param -> resolveConstructorParameterForNewInstance(param, creating)).toArray();
+
+			Object instance = constructor.newInstance(args);
+
+			injectFields(clazz, instance);
+
+			processInitMethod(clazz, instance);
+
+			return instance;
+		} catch (Exception e) {
+			throw new FrameworkException("Failed to create new instance of " + clazz.getName(), e);
+		} finally {
+			creating.remove(clazz);
+			if (creating.isEmpty()) {
+				CREATING_INSTANCES.remove();
+			}
+		}
+	}
+
+	private static Object resolveConstructorParameterForNewInstance(Parameter parameter, Set<Class<?>> creating) {
+		Class<?> paramType = parameter.getType();
+
+		// Check for circular dependency at constructor level
+		if (creating.contains(paramType)) {
+			throw new FrameworkException("Circular dependency in constructor parameter. Cannot create "
+					+ paramType.getName() + " while creating " + creating.iterator().next().getName());
+		}
+
+		// Try to get from ComponentStore first
+		Object component = ComponentStore.components.get(paramType.getName());
+		if (component != null) {
+			return component;
+		}
+
+		// Check for DefaultParameter annotation
+		DefaultParameter defaultParam = parameter.getAnnotation(DefaultParameter.class);
+		if (defaultParam != null) {
+			return ObjectUtils.convertValue(defaultParam.value(), paramType);
+		}
+
+		// If it's a component type, create new instance (with cycle detection)
+		if (isComponentClass(paramType)) {
+			// Check if we're already creating this type
+			if (creating.contains(paramType)) {
+				throw new FrameworkException("Circular dependency: Trying to create " + paramType.getName()
+						+ " while already in creation chain");
+			}
+
+			// Create new instance with the current creation set
+			return createNewInstance(paramType);
+		}
+
+		// Try to find by interface in ComponentStore
+		for (Map.Entry<String, Object> entry : ComponentStore.components.entrySet()) {
+			if (paramType.isAssignableFrom(entry.getValue().getClass())) {
+				return entry.getValue();
+			}
+		}
+
+		// Return default value
+		return getDefaultValueForType(paramType);
 	}
 
 	private static void processDataStorageField(Object instance, Field field) throws IllegalAccessException {
@@ -443,27 +580,27 @@ public class ComponentProcessor {
 	}
 
 	private static void processInitMethod(Class<?> clazz, Object instance) throws Exception {
-	    List<Method> initMethods = Arrays.stream(clazz.getDeclaredMethods())
-	            .filter(m -> m.isAnnotationPresent(OnInit.class))
-	            .sorted(Comparator.comparingInt(m -> m.getAnnotation(OnInit.class).order())).toList();
+		List<Method> initMethods = Arrays.stream(clazz.getDeclaredMethods())
+				.filter(m -> m.isAnnotationPresent(OnInit.class))
+				.sorted(Comparator.comparingInt(m -> m.getAnnotation(OnInit.class).order())).toList();
 
-	    for (Method method : initMethods) {
-	        validateInitMethod(method);
-	        Object[] params = resolveMethodParameters(method);
-	        method.setAccessible(true);
-	        try {
-	            method.invoke(instance, params);
-	        } catch (InvocationTargetException e) {
-	            Throwable targetException = e.getTargetException();
-	            if (targetException instanceof Exception) {
-	                throw (Exception) targetException;
-	            } else {
-	                throw new RuntimeException("Error in init method", targetException);
-	            }
-	        } catch (IllegalAccessException | IllegalArgumentException e) {
-	            throw e;
-	        }
-	    }
+		for (Method method : initMethods) {
+			validateInitMethod(method);
+			Object[] params = resolveMethodParameters(method);
+			method.setAccessible(true);
+			try {
+				method.invoke(instance, params);
+			} catch (InvocationTargetException e) {
+				Throwable targetException = e.getTargetException();
+				if (targetException instanceof Exception) {
+					throw (Exception) targetException;
+				} else {
+					throw new RuntimeException("Error in init method", targetException);
+				}
+			} catch (IllegalAccessException | IllegalArgumentException e) {
+				throw e;
+			}
+		}
 	}
 
 	private static void processPreDestroyMethod(Class<?> clazz, Object instance, int level) {
