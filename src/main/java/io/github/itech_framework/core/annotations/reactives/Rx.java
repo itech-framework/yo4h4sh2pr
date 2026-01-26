@@ -35,7 +35,7 @@ import java.lang.annotation.Target;
 @Deprecated(since = "1.0.11", forRemoval = true)
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
-@SuppressWarnings({"unused", "RedundantSuppression"})
+@SuppressWarnings({"unused"})
 public @interface Rx {
     /**
      * Specifies a named component for qualified injection

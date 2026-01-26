@@ -28,7 +28,7 @@ import java.lang.annotation.Target;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
-@SuppressWarnings({"unused", "RedundantSuppression"})
+@SuppressWarnings({"unused"})
 public @interface OnInit {
     /**
      * Determines method execution order within the component lifecycle

@@ -8,21 +8,20 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a class as a business logic service component
+ * Marks a class as a service component in the business logic layer.
  * <p>
  * Indicates that the annotated class contains core business rules and workflow
- * implementations. Specialization of {@link Component} that helps distinguish
- * business logic layers from other component types in the application architecture.
+ * implementations. This is the replacement for the deprecated {@link BusinessLogic}
+ * annotation and provides the same functionality with a more conventional name.
  * </p>
  *
  * @author Sai Zaw Myint
- * @since 1.0.0
+ * @since 1.1.0
  * @see Component
- * @deprecated Use {@link Service} instead. This annotation will be removed in a future version.
+ * @see BusinessLogic
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 @Component
-@Deprecated(since = "1.1.0", forRemoval = true)
-public @interface BusinessLogic {
+public @interface Service {
 }

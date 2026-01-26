@@ -30,7 +30,7 @@ import java.lang.annotation.Target;
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
-@SuppressWarnings({"unused", "RedundantSuppression"})
+@SuppressWarnings({"unused"})
 public @interface Property {
     /**
      * The property key to retrieve from configuration files

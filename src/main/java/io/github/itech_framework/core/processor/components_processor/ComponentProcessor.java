@@ -26,6 +26,7 @@ import io.github.itech_framework.core.annotations.components.IgnoreInterfaces;
 import io.github.itech_framework.core.annotations.components.levels.BusinessLogic;
 import io.github.itech_framework.core.annotations.components.levels.DataAccess;
 import io.github.itech_framework.core.annotations.components.levels.Presentation;
+import io.github.itech_framework.core.annotations.components.levels.Service;
 import io.github.itech_framework.core.annotations.components.policy.DisableLoaded;
 import io.github.itech_framework.core.annotations.constructor.DefaultConstructor;
 import io.github.itech_framework.core.annotations.dependency.Use;
@@ -249,10 +250,13 @@ public class ComponentProcessor {
 		return isComponent;
 	}
 
+	@SuppressWarnings("removal")
 	private static int determineComponentLevel(Class<?> clazz) {
 		if (clazz.isAnnotationPresent(DataAccess.class))
 			return DATA_ACCESS_LEVEL;
 		if (clazz.isAnnotationPresent(BusinessLogic.class))
+			return BUSINESS_LOGIC_LEVEL;
+		if (clazz.isAnnotationPresent(Service.class))
 			return BUSINESS_LOGIC_LEVEL;
 		if (clazz.isAnnotationPresent(Presentation.class))
 			return PRESENTATION_LEVEL;

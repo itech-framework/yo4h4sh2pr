@@ -1,7 +1,8 @@
 package io.github.itech_framework.core.utils;
 
 public class ObjectUtils {
-    public static Object convertValue(String value, Class<?> type) {
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+	public static Object convertValue(String value, Class<?> type) {
         // Handle null input with type-specific defaults
         if (value == null) {
             if (type == String.class) return "";
