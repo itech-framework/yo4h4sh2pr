@@ -24,6 +24,7 @@ import io.github.itech_framework.core.annotations.api_client.EnableApiClient;
 import io.github.itech_framework.core.annotations.components.Component;
 import io.github.itech_framework.core.annotations.components.IgnoreInterfaces;
 import io.github.itech_framework.core.annotations.components.levels.BusinessLogic;
+import io.github.itech_framework.core.annotations.components.levels.Configuration;
 import io.github.itech_framework.core.annotations.components.levels.DataAccess;
 import io.github.itech_framework.core.annotations.components.levels.Presentation;
 import io.github.itech_framework.core.annotations.components.levels.Service;
@@ -579,8 +580,204 @@ public class ComponentProcessor {
 	 */
 
 	public static void injectMethods(Class<?> clazz, Object instance, int level) throws Exception {
-		processInitMethod(clazz, instance);
-		processPreDestroyMethod(clazz, instance, level);
+	    processInitMethod(clazz, instance);
+	    processPreDestroyMethod(clazz, instance, level);
+	    if(clazz.isAnnotationPresent(Configuration.class)) {
+	        processConfigurationMethod(clazz, instance);
+	    }
+	}
+
+	private static void processConfigurationMethod(Class<?> clazz, Object configInstance) throws Exception {
+	    List<Method> componentMethods = Arrays.stream(clazz.getDeclaredMethods())
+	            .filter(m -> m.isAnnotationPresent(Component.class) && m.getReturnType() != void.class)
+	            .collect(Collectors.toList());
+	    
+	    logger.debug("Processing configuration class: {}, found {} component methods", 
+	                 clazz.getSimpleName(), componentMethods.size());
+	    
+	    // Track processed methods to detect circular dependencies
+	    ThreadLocal<Set<Method>> methodsInProgress = ThreadLocal.withInitial(HashSet::new);
+	    
+	    for (Method method : componentMethods) {
+	        processConfigurationBeanMethod(method, configInstance, methodsInProgress);
+	    }
+	}
+
+	private static void processConfigurationBeanMethod(Method method, Object configInstance, 
+	                                                   ThreadLocal<Set<Method>> methodsInProgress) throws Exception {
+	    
+	    Set<Method> processing = methodsInProgress.get();
+	    
+	    // Check for circular dependency
+	    if (processing.contains(method)) {
+	        throw new FrameworkException("Circular dependency detected in configuration method: " + 
+	                                     method.getName() + " in class " + method.getDeclaringClass().getName());
+	    }
+	    
+	    processing.add(method);
+	    try {
+	        Component componentAnnotation = method.getAnnotation(Component.class);
+	        String key = getComponentKeyFromMethod(componentAnnotation, method);
+	        
+	        // Check if already registered
+	        if (ComponentStore.components.containsKey(key)) {
+	            logger.debug("Bean already registered with key: {}, skipping method: {}", 
+	                         key, method.getName());
+	            return;
+	        }
+	        
+	        // Resolve method parameters (may include other configuration beans)
+	        Object[] params = resolveConfigurationMethodParameters(method, configInstance, methodsInProgress);
+	        
+	        // Invoke method to create bean
+	        method.setAccessible(true);
+	        Object bean = method.invoke(configInstance, params);
+	        
+	        if (bean == null) {
+	            throw new FrameworkException("Configuration method " + method.getName() + 
+	                                         " returned null. @Component methods must return non-null objects.");
+	        }
+	        
+	        // Determine component level
+	        int level = determineComponentLevel(method.getReturnType());
+	        
+	        // Register the bean
+	        ComponentStore.registerComponent(key, bean, level);
+	        
+	        // Also register under return type
+	        ComponentStore.registerComponent(method.getReturnType().getName(), bean, level);
+	        
+	        // Register under interfaces if not ignored
+	        Class<?> beanClass = bean.getClass();
+	        if (!AnnotationUtils.hasAnnotation(beanClass, IgnoreInterfaces.class)) {
+	            for (Class<?> iface : beanClass.getInterfaces()) {
+	                String interfaceKey = iface.getName();
+	                if (!ComponentStore.components.containsKey(interfaceKey)) {
+	                    ComponentStore.registerComponent(interfaceKey, bean, level);
+	                }
+	            }
+	        }
+	        
+	        // Perform field injection on the bean
+	        injectFields(beanClass, bean);
+	        
+	        // Call @OnInit methods on the bean
+	        processInitMethod(beanClass, bean);
+	        
+	        // Register @PreDestroy methods
+	        processPreDestroyMethod(beanClass, bean, level);
+	        
+	        logger.debug("Registered bean from configuration method: {} -> {}", 
+	                     method.getName(), key);
+	        
+	    } finally {
+	        processing.remove(method);
+	        if (processing.isEmpty()) {
+	            methodsInProgress.remove();
+	        }
+	    }
+	}
+
+	private static String getComponentKeyFromMethod(Component componentAnnotation, Method method) {
+	    if (componentAnnotation != null && !componentAnnotation.name().isEmpty()) {
+	        return componentAnnotation.name();
+	    }
+	    return method.getDeclaringClass().getName() + "." + method.getName();
+	}
+
+	private static Object[] resolveConfigurationMethodParameters(Method method, Object configInstance,
+	                                                            ThreadLocal<Set<Method>> methodsInProgress) throws Exception {
+	    Parameter[] parameters = method.getParameters();
+	    Object[] args = new Object[parameters.length];
+	    
+	    for (int i = 0; i < parameters.length; i++) {
+	        Parameter param = parameters[i];
+	        Class<?> paramType = param.getType();
+	        
+	        Object component = ComponentStore.components.get(paramType.getName());
+	        if (component != null) {
+	            args[i] = component;
+	            continue;
+	        }
+	        
+	        component = findConfigurationBean(paramType, method.getDeclaringClass(), 
+	                                         configInstance, methodsInProgress);
+	        if (component != null) {
+	            args[i] = component;
+	            continue;
+	        }
+	        
+	        DefaultParameter defaultParam = param.getAnnotation(DefaultParameter.class);
+	        if (defaultParam != null) {
+	            args[i] = ObjectUtils.convertValue(defaultParam.value(), paramType);
+	            continue;
+	        }
+	        
+	        if (isComponentClass(paramType)) {
+	            try {
+	                args[i] = createNewInstance(paramType);
+	            } catch (Exception e) {
+	                throw new FrameworkException("Failed to create dependency for parameter '" + 
+	                                           param.getName() + "' in method " + method.getName(), e);
+	            }
+	            continue;
+	        }
+	        
+	        for (Map.Entry<String, Object> entry : ComponentStore.components.entrySet()) {
+	            if (paramType.isAssignableFrom(entry.getValue().getClass())) {
+	                args[i] = entry.getValue();
+	                break;
+	            }
+	        }
+	        
+	        if (args[i] == null) {
+	            throw new FrameworkException("Cannot resolve parameter '" + param.getName() + 
+	                                       "' of type " + paramType.getName() + 
+	                                       " for configuration method " + method.getName());
+	        }
+	    }
+	    
+	    return args;
+	}
+
+	private static Object findConfigurationBean(Class<?> type, Class<?> configClass, 
+	                                           Object configInstance,
+	                                           ThreadLocal<Set<Method>> methodsInProgress) throws Exception {
+	    List<Method> matchingMethods = Arrays.stream(configClass.getDeclaredMethods())
+	            .filter(m -> m.isAnnotationPresent(Component.class) && 
+	                         m.getReturnType() != void.class &&
+	                         type.isAssignableFrom(m.getReturnType()))
+	            .collect(Collectors.toList());
+	    
+	    if (matchingMethods.isEmpty()) {
+	        return null;
+	    }
+	    
+	    if (matchingMethods.size() > 1) {
+	        for (Method m : matchingMethods) {
+	            Component comp = m.getAnnotation(Component.class);
+	            String key = getComponentKeyFromMethod(comp, m);
+	            if (ComponentStore.components.containsKey(key)) {
+	                return ComponentStore.components.get(key);
+	            }
+	        }
+	        throw new FrameworkException("Multiple @Component methods return " + type.getName() + 
+	                                   " in configuration class " + configClass.getName() + 
+	                                   ". Use @Component(name='...') to specify unique names.");
+	    }
+	    
+	    Method beanMethod = matchingMethods.get(0);
+	    
+	    Component compAnnotation = beanMethod.getAnnotation(Component.class);
+	    String key = getComponentKeyFromMethod(compAnnotation, beanMethod);
+	    
+	    if (ComponentStore.components.containsKey(key)) {
+	        return ComponentStore.components.get(key);
+	    }
+	    
+	    processConfigurationBeanMethod(beanMethod, configInstance, methodsInProgress);
+	    
+	    return ComponentStore.components.get(key);
 	}
 
 	private static void processInitMethod(Class<?> clazz, Object instance) throws Exception {

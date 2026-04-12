@@ -1,11 +1,11 @@
 package io.github.itech_framework.core.annotations.components;
 
-import io.github.itech_framework.core.annotations.ComponentScan;
-
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+
+import io.github.itech_framework.core.annotations.ComponentScan;
 
 /**
  * Marks a class as a managed component in the ITech Framework
@@ -20,7 +20,7 @@ import java.lang.annotation.Target;
  * @see ComponentScan
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.TYPE})
+@Target({ElementType.TYPE, ElementType.METHOD})
 public @interface Component {
     /**
      * Specifies a custom name for the component
