@@ -1,48 +1,83 @@
 package io.github.itech_framework.core.store;
 
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 public class ComponentStore {
-    public static final Map<String, Object> components = new ConcurrentHashMap<>();
-    private static final Map<String, Integer> componentLevels = new ConcurrentHashMap<>();
+    private static final int DEFAULT_LEVEL = 3;
+    private static final Object LOCK = new Object();
 
-    // Existing methods remain for backward compatibility
+    public static final Map<String, Object> components = new ConcurrentHashMap<>();
+    private static final Map<Integer, List<Object>> instancesByLevel = new TreeMap<>();
+    private static final Map<Object, Integer> instanceLevels = new IdentityHashMap<>();
+
     public static void registerComponent(String key, Object instance, int level) {
         components.put(key, instance);
-        componentLevels.put(key, level);
+        synchronized (LOCK) {
+            if (!instanceLevels.containsKey(instance)) {
+                instanceLevels.put(instance, level);
+                instancesByLevel.computeIfAbsent(level, l -> new ArrayList<>()).add(instance);
+            }
+        }
     }
 
-    // New type-safe registration method
     public static <T> void registerComponent(Class<T> componentType, T instance, int level) {
-        String key = componentType.getName();
-        components.put(key, instance);
-        componentLevels.put(key, level);
+        registerComponent(componentType.getName(), instance, level);
     }
 
     public static List<Object> getComponentsByLevel(int level) {
-        return componentLevels.entrySet().stream()
-                .filter(entry -> entry.getValue() == level)
-                .map(entry -> components.get(entry.getKey()))
-                .collect(Collectors.toList());
+        synchronized (LOCK) {
+            return new ArrayList<>(instancesByLevel.getOrDefault(level, List.of()));
+        }
     }
 
-    // Type-safe component retrieval
+    public static List<Object> getAllComponents() {
+        synchronized (LOCK) {
+            List<Object> all = new ArrayList<>();
+            instancesByLevel.values().forEach(all::addAll);
+            return all;
+        }
+    }
+
+    public static int levelOf(Object instance) {
+        synchronized (LOCK) {
+            return instanceLevels.getOrDefault(instance, DEFAULT_LEVEL);
+        }
+    }
+
+    public static <T> List<T> findByType(Class<T> type) {
+        List<T> matches = new ArrayList<>();
+        for (Object instance : getAllComponents()) {
+            if (type.isInstance(instance)) {
+                matches.add(type.cast(instance));
+            }
+        }
+        return matches;
+    }
+
     @SuppressWarnings("unchecked")
     public static <T> Optional<T> getComponent(Class<T> componentType) {
         return Optional.ofNullable((T) components.get(componentType.getName()));
     }
 
-    // New helper method for existence check
     public static boolean hasComponent(Class<?> componentType) {
         return components.containsKey(componentType.getName());
     }
 
-    // Original method remains for string-based access
     public static Object getComponent(String key) {
         return components.get(key);
+    }
+
+    public static void clear() {
+        synchronized (LOCK) {
+            components.clear();
+            instancesByLevel.clear();
+            instanceLevels.clear();
+        }
     }
 }

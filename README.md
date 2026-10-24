@@ -1,24 +1,28 @@
 # FlexiTech Fx Framework 🌱
 
-A lightweight, annotation-based dependency injection framework with simplified conventions and improved developer ergonomics.
+A lightweight, annotation-based dependency injection framework for Java with simple conventions and good developer ergonomics.
 
 ## Features ✨
 - Component registration through annotations
-- Dependency management
-- Component lifecycle management
-- Auto-component scanning
-- Properties management
-- In-Memory Data Storage
+- Constructor, field and factory-method dependency injection
+- Dependency-ordered initialization with circular dependency detection
+- Component lifecycle management (`@OnInit`, `@PreDestroy`)
+- Auto-component scanning (directory and JAR)
+- Properties management with profiles
+- Persistent data storage
 
 ## Modules ✨
-- JavaFX 🔥[java-fx](https://github.com/itech-framework/java-fx)
+- JavaFX 🔥 [java-fx](https://github.com/itech-framework/java-fx)
 - JPA 🔥 [itech-jpa](https://github.com/itech-framework/jpa)
-- API Client 🔥[api-client](https://github.com/itech-framework/api-client)
+- API Client 🔥 [api-client](https://github.com/itech-framework/api-client)
 
 ## Demo Applications
 - [Task Management Application](https://github.com/itech-framework/demo)
 
 ## Getting Started 🚀
+
+### Requirements
+- Java 17+
 
 ### Installation
 Add to your project via Maven:
@@ -26,49 +30,50 @@ Add to your project via Maven:
 <dependency>
    <groupId>io.github.itech-framework</groupId>
    <artifactId>core</artifactId>
-   <version>1.0.1</version>
+   <version>1.0.11</version>
 </dependency>
 ```
-### Explanation Of Example Usage
-- Create main application class:
+
+### Example Usage
+
+Create the main application class:
 ```java
 @ComponentScan(basePackage = "org.itech.framework.test")
 public class Main {
-    private static final Logger log = LogManager.getLogger(Main.class);
-    public static void main(String[] args) {
-        log.info("Starting application...");
+    public static void main(String[] args) throws Exception {
         ITechApplication.run(Main.class);
     }
 }
-  ```
-- Defined a presentation component class:
+```
+
+Define a presentation component:
 ```java
 @Presentation
-@Getter
 public class MainController {
-    @Rx
+    @Use
     private CalculatorService calculatorService;
 
     @OnInit
-    public void intializedMethod(){
-        System.out.println("The sum value of 5 + 5 is: " + calculatorService.plus(5,5));
+    public void initialized() {
+        System.out.println("5 + 5 = " + calculatorService.plus(5, 5));
     }
 }
 ```
-The `@Rx` annotation is the dependency injection of the component.
-The `@OnInit` is the post construct method after component has registered and initialized.
-> 📌 **Note**: The `@Presentation` annotation is a higher level of component. There are difference levels on component registering. Please see [Component Hierarchy](https://github.com/itech-framework/fx/new/main?filename=README.md#component-hierarchy) documentation.
 
-### Business Service Implementation Example 💡
+`@Use` injects another component into the field. `@OnInit` runs after the component has been created and its dependencies have been injected.
+
+> 📌 **Note**: `@Presentation` is a component with a higher level. See [Component Levels](#component-levels) for the different levels.
+
+### Business Service Example 💡
 
 ```java
 public interface CalculatorService {
     int plus(int a, int b);
 }
 
-@BusinessLogic
+@Service
 public class CalculatorServiceImpl implements CalculatorService {
-    @Rx
+    @Use
     private UserRepository repository;
 
     @Override
@@ -78,50 +83,14 @@ public class CalculatorServiceImpl implements CalculatorService {
 }
 ```
 
-**Implementation Breakdown:**
+**Breakdown:**
 
-1. **Service Contract**:
-   - `CalculatorService` interface defines the method signature
-   - Provides abstraction layer for business logic
+1. `CalculatorService` is the contract. Injection points depend on the interface.
+2. `@Service` registers the implementation at the business level (level 1). It is discovered and instantiated automatically.
+3. `@Use` injects `UserRepository` (a data access component).
+4. The framework registers the implementation under its interface name, so `@Use CalculatorService` resolves to `CalculatorServiceImpl`.
 
-2. **Concrete Implementation**:
-   - `@BusinessLogic` annotation registers the implementation at business layer (level 1)
-   - Automatically discovered and instantiated by the framework
-
-3. **Dependency Management**:
-   - `@Rx` injects `UserRepository` (data access layer component)
-   - Safe cross-layer dependency (business → data access)
-
-4. **Method Implementation**:
-   - Concrete business logic implementation
-   - Can combine domain logic with data access operations
-
-**Implementation Strategies:**
-
-| Approach            | Example                                         | When to Use                          |
-|---------------------|-------------------------------------------------|--------------------------------------|
-| **Interface-based** | `CalculatorServiceImpl`                         | Core business logic, Complex systems |
-| **Direct MOJO**     | `@BusinessLogic class SimpleCalculator { ... }` | Prototyping, Simple utilities        |
-
-> 📌 **Best Practice Recommendation**
->
-> While the framework supports both patterns:
-> ```java
-> // Interface-based (Recommended)
-> @BusinessLogic
-> public class ServiceImpl implements ServiceInterface{}
-> 
-> // Direct class implementation
-> @BusinessLogic
-> public class SimpleService{}
-> ```
-> We recommend interface-based implementation for:
-> - Better testability
-> - Clear contract definition
-> - Loose coupling
-> - Future extensibility
-
-**Dependency Flow:**
+**Dependency flow:**
 ```mermaid
 graph LR
     A[MainController] --> B[CalculatorService]
@@ -129,121 +98,204 @@ graph LR
     C --> D[(Database)]
 ```
 
-**Key Notes:**
-- The framework automatically resolves interface implementations
-- `@Rx` indicates dependency binding (reactor of the component)
-- Business layer components can safely depend on lower layers (data access)
-
+> 📌 **Recommendation**: prefer interface-based services. They are easier to test, keep contracts explicit and keep components loosely coupled. Classes without an interface also work.
 
 ## Annotations Reference 🔖
 
 ### Component Scanning
 ```java
-@ComponentScan(basePackage = "org.itech.framework.test", properties = "application.properties")
-public class Main {
-    private static final Logger log = LogManager.getLogger(Main.class);
-    public static void main(String[] args) {
-        log.info("Starting application...");
-        ITechApplication.run(Main.class);
-    }
-}
+@ComponentScan(basePackage = "org.itech.framework.test", properties = {"application.properties"})
+public class Main { ... }
 ```
 **Attributes**:
-- `basePackage`: the based package that the framework to scan all components
-- `properties`: initialize properties for `Poperty Management`. If `properties` attribute is omitted, framework looks for `application.properties` in classpath (optional)
+- `basePackage`: the package the framework scans (including sub-packages) for components.
+- `properties`: properties files to load. Defaults to `application.properties` on the classpath.
 
 ### Component Registration
 
-| Annotation       | Target | Level | Attributes | Description                   |
-|------------------|--------|-------|------------|-------------------------------|
-| `@DataAccess`    | Class  | 0     | `name`     | Database layer components     |
-| `@BusinessLogic` | Class  | 1     | `name`     | Business logic services       |
-| `@Presentation`  | Class  | 2     | `name`     | Controllers, UI handlers      |
-| `@Component`     | Class  | 3     | `name`     | Utilities, General components |
+| Annotation       | Target | Level | Attributes | Description                                  |
+|------------------|--------|-------|------------|----------------------------------------------|
+| `@DataAccess`    | Class  | 0     | -          | Repositories, DAOs                           |
+| `@Service`       | Class  | 1     | -          | Business logic services                      |
+| `@Presentation`  | Class  | 2     | -          | Controllers, UI handlers                     |
+| `@Component`     | Class  | 3     | `name`     | General purpose components, utilities        |
+| `@Configuration` | Class  | 3     | -          | Classes that define components via methods   |
 
-### Dependency Management
+> ⚠️ `@BusinessLogic` is deprecated and will be removed. Use `@Service`.
+
+Component names default to the fully qualified class name. Use `@Component(name = "...")` to set a custom name.
+
+### Dependency Injection
+
 ```java
-@Rx(name = "userService")
-private UserService service;
+@Use
+private UserService userService;
+
+@Use(name = "userService")
+private UserService namedService;
+
+@Use(share = false)
+private ReportBuilder reportBuilder;
 ```
-`@Rx` indicates dependency binding (reactor of the component)
 
 **Attributes**:
-- `name`: Custom component name (optional)
+- `name`: inject the component registered under this name (optional).
+- `share`: `true` (default) injects the shared singleton. `false` creates a new instance for every injection point. A new instance gets its own dependencies injected and its `@OnInit` methods run, but its `@PreDestroy` methods are not tracked.
 
-### Component Lifecycle management
-**OnInit**
+**Constructor injection** is supported. The framework uses a constructor annotated with `@DefaultConstructor`, otherwise the no-arg constructor, otherwise the constructor with the most parameters it can fully resolve:
+```java
+@Service
+public class OrderService {
+    private final OrderRepository repository;
+    private final int pageSize;
+
+    public OrderService(OrderRepository repository, @DefaultParameter("20") int pageSize) {
+        this.repository = repository;
+        this.pageSize = pageSize;
+    }
+}
+```
+- `@DefaultConstructor`: marks the constructor the framework must use.
+- `@DefaultParameter("value")`: a fallback value for a constructor or `@OnInit` parameter when no component matches.
+
+### How Components Are Resolved
+
+For `@Use` fields and constructor parameters, the framework looks for a component in this order:
+
+1. The component registered under `name` (or under the field's type name if no `name` is given).
+2. A component whose simple class name matches `name`.
+3. If no `name` is given, the one component whose type is assignable to the field type.
+
+If more than one component matches, startup fails with a message asking you to choose with `@Use(name = "...")`.
+
+Each component is also registered under the interfaces it implements, unless the class is annotated with `@IgnoreInterfaces`. Two components cannot be registered under the same interface or the same name.
+
+### Configuration Classes
+
+Use `@Configuration` to create components from methods, for example to wrap third-party objects:
 
 ```java
-@OnInit(order=1)
-private void initialized(){
+@Configuration
+public class AppConfig {
+    @Property(key = "api.url")
+    private String apiUrl;
+
+    @Component
+    public HttpClient httpClient() {
+        return new HttpClient(apiUrl);
+    }
+
+    @Component(name = "retryPolicy")
+    public RetryPolicy retryPolicy(HttpClient client) {
+        return new RetryPolicy(client, 3);
+    }
+}
+```
+- The configuration class has its fields injected and `@OnInit` methods run before its component methods are called.
+- Method parameters are resolved like constructor parameters, so one method can depend on another.
+- A component method must not return `null`.
+- The component is registered under its name (the `@Component` name, or `ClassName.methodName`), its return type and the interfaces of its runtime class.
+
+### Component Lifecycle
+
+```java
+@OnInit(order = 1)
+private void initialized() {
     System.out.println("Component is initialized!");
 }
-```
-`@OnInit`: the method that will invoke after the component initialized.<br>
 
-**Attributes**:
-- `order`: post construct after component is initialized by the order (optional)
-
-**PreDestroy**
-
-```java
 @PreDestroy
 public void cleanup() {
-    // Release resources here
+    // release resources
 }
 ```
-`@PreDestroy`: the method that will invoke before the component is disposed or destroy.
-> **Note**: the framework component resource is automatically clean up after the application stop.
+- `@OnInit` methods run after the component's fields are injected. `order` sorts multiple init methods within one component (lowest first). Init methods may declare parameters, which are resolved as components or `@DefaultParameter` values.
+- `@PreDestroy` methods run when the application shuts down.
+
+**Order guarantees:**
+- A component is always initialized **after** the components it depends on (constructor, factory method and shared `@Use` dependencies).
+- Components that don't depend on each other are initialized by level (0 → 3), then by registration order.
+- At shutdown, `@PreDestroy` methods run in the **reverse** of the initialization order, so a component is destroyed before the components it depends on.
+
+### Circular Dependencies
+- **Constructor / factory method cycles** are detected at startup and fail with the full chain, for example `Circular dependency detected: demo.X -> demo.Y -> demo.X`.
+- **Field (`@Use`) cycles between shared components** are allowed. Both instances exist before fields are injected.
+- Cycles through `@Use(share = false)` are detected and fail.
+
+### Other Annotations
+- `@IgnoreInterfaces`: don't register the component under its interfaces.
+- `@DisableLoaded`: the component is created and registered but its fields are not injected and its lifecycle methods are not run. Use it for components you configure manually later.
 
 ### Properties Management
-```porperties
+```properties
 application.name=Test Flexitech Framework
 ```
 ```java
 @Property(key = "application.name")
 private String applicationName;
 ```
-The `@Poperty` annotation is to get the value from the properties file.<br>
-**Attribues**:
-- `key`: the properties key
-- `defaultValue`: the default value of the key (Optional)
+**Attributes**:
+- `key`: the property key.
+- `defaultValue`: the value used when the key is missing (optional). Without it, a missing key fails startup.
 
-### In-Memory Data Storage
+Supported field types: `String`, primitives and their wrappers, and enums.
+
+#### Profiles
+The active profile is read from the `flexi.profiles.active` system property, then from the `flexi.profiles.active` key in the base properties file, and defaults to `dev`. For every base file the framework also loads an optional override file named `<name>-<profile>.properties` (for example `application-dev.properties`), which takes precedence.
+
+```bash
+java -Dflexi.profiles.active=prod -jar app.jar
+```
+
+### Data Storage
 ```java
-@DataStorage(key = "authenticated")
+@DataStorage(key = "authenticated", defaultValue = "false")
 private boolean authenticated;
 ```
 **Attributes**:
-- `key`: the storage key (Optional)
-#### Data Storage Manager
+- `key`: the storage key (defaults to the field name).
+- `defaultValue`: the value when nothing is stored yet (optional).
+
+The value is loaded from storage when the component is initialized. Values are persisted with `java.util.prefs.Preferences` by default.
+
+To persist a change:
 ```java
-public void synchronizeStorageKey(){
-   DataStorageUtil.save("authenticated", isAuthenticated);
-}
+DataStorageUtil.save("authenticated", true);
 ```
-> **Note**: to save storage key we need to use the `DataStorageUtil.save` for state changes.
+`DataStorageUtil.save` updates every component field bound to that key and writes it to storage. `DataStorageUtil.load(key)` and `DataStorageUtil.load(key, Class)` read values.
 
-## Component Hierarchy
+To use a different backend, provide your own `DataStorageService` component. It replaces the default one.
 
-The framework organizes components in a layered architecture using priority levels. Components are registered and initialized in order of their priority level (lowest number first), ensuring proper dependency resolution between layers.
+### Enabling Modules
+Put these on your main class when you use the matching module:
+- `@EnableJavaFx`: requires the [java-fx](https://github.com/itech-framework/java-fx) module.
+- `@EnableJPA`: requires the [jpa](https://github.com/itech-framework/jpa) module. If you have `@Entity` classes in the scanned package and JPA is not available or not initialized, startup fails with a message explaining why.
+- `@EnableApiClient`: requires the [api-client](https://github.com/itech-framework/api-client) module.
 
-### Component Levels
+## Component Levels
 
-| Level | Constant                 | Priority | Annotation       | Typical Use Case                |
-|-------|--------------------------|----------|------------------|---------------------------------|
-| 0     | `DATA_ACCESS_LEVEL`      | Highest  | `@DataAccess`    | Database repositories, DAOs     |
-| 1     | `BUSINESS_LOGIC_LEVEL`   | High     | `@BusinessLogic` | Service classes, Core logic     |
-| 2     | `PRESENTATION_LEVEL`     | Medium   | `@Presentation`  | Controllers, UI handlers        |
-| 3     | `DEFAULT_LEVEL`          | Low      | `@Component`     | Utilities, General components   |
+Components are layered by level. Level controls the initialization order of components that don't depend on each other. Dependencies always win over levels.
 
-### Key Concepts
+| Level | Constant               | Annotation       | Typical Use Case              |
+|-------|------------------------|------------------|-------------------------------|
+| 0     | `DATA_ACCESS_LEVEL`    | `@DataAccess`    | Repositories, DAOs            |
+| 1     | `BUSINESS_LOGIC_LEVEL` | `@Service`       | Services, core logic          |
+| 2     | `PRESENTATION_LEVEL`   | `@Presentation`  | Controllers, UI handlers      |
+| 3     | `DEFAULT_LEVEL`        | `@Component`     | Utilities, general components |
 
-1. **Initialization Order**:
-   ```txt
-   Data Access (0) → Business Logic (1) → Presentation (2) → Default (3)
-   ```
+```txt
+Data Access (0) → Business Logic (1) → Presentation (2) → Default (3)
+```
 
+## Migrating from `@Rx` and `@BusinessLogic`
+
+| Old              | New        |
+|------------------|------------|
+| `@Rx`            | `@Use`     |
+| `@Rx(name = "x")`| `@Use(name = "x")` |
+| `@BusinessLogic` | `@Service` |
+
+Search your project for `@Rx` before upgrading. Fields still annotated with it are no longer injected.
 
 ## 🤝 Support
 For assistance:  
