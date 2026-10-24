@@ -17,7 +17,8 @@ A lightweight, annotation-based dependency injection framework for Java with sim
 - API Client 🔥 [api-client](https://github.com/itech-framework/api-client)
 
 ## Demo Applications
-- [Task Management Application](https://github.com/itech-framework/demo)
+- [Task Management Application - Framework version 1.0.1](https://github.com/itech-framework/demo)
+- [Daily Planner Application - Framework version 1.0.11+Latest](https://github.com/itech-framework/daily-planner)
 
 ## Getting Started 🚀
 
