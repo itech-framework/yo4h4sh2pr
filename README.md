@@ -12,13 +12,13 @@ A lightweight, annotation-based dependency injection framework for Java with sim
 - Persistent data storage
 
 ## Modules ✨
+- API Client 🔥 [api-client](https://github.com/itech-framework/api-client)
 - JavaFX 🔥 [java-fx](https://github.com/itech-framework/java-fx)
 - JPA 🔥 [itech-jpa](https://github.com/itech-framework/jpa)
-- API Client 🔥 [api-client](https://github.com/itech-framework/api-client)
 
 ## Demo Applications
-- [Task Management Application - Framework version 1.0.1](https://github.com/itech-framework/demo)
 - [Daily Planner Application - Framework version 1.0.11+Latest](https://github.com/itech-framework/daily-planner)
+- [Task Management Application - Framework version 1.0.1](https://github.com/itech-framework/demo)
 
 ## Getting Started 🚀
 
@@ -31,7 +31,7 @@ Add to your project via Maven:
 <dependency>
    <groupId>io.github.itech-framework</groupId>
    <artifactId>core</artifactId>
-   <version>1.0.11</version>
+   <version>1.0.12-RC1</version> <!-- Latest version -->
 </dependency>
 ```
 

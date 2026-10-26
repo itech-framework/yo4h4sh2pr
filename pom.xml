@@ -6,9 +6,9 @@
 
 	<groupId>io.github.itech-framework</groupId>
 	<artifactId>core</artifactId>
-	<version>1.0.12-SNAPSHOT</version>
+	<version>1.0.12-RC1</version>
 
-	<name>Flexitech FX Framework</name>
+	<name>Flexitec FX Framework</name>
 	<description>
 		Core module of the Flexitech framework providing dependency injection,
 		annotation processing, and component lifecycle management. Features
@@ -20,7 +20,6 @@
 	</description>
 	<url>https://github.com/itech-framework/core</url>
 
-	<!-- Licensing Information -->
 	<licenses>
 		<license>
 			<name>MIT License</name>
@@ -35,7 +34,6 @@
 		</developer>
 	</developers>
 
-	<!-- SCM Configuration -->
 	<scm>
 		<connection>scm:git:https://github.com/itech-framework/core.git</connection>
 		<developerConnection>
@@ -68,6 +66,7 @@
 			<artifactId>jackson-core</artifactId>
 			<version>2.17.0</version>
 		</dependency>
+
 		<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-api</artifactId>
@@ -80,7 +79,6 @@
 			<version>2.23.1</version>
 		</dependency>
 
-		<!-- https://mvnrepository.com/artifact/com.google.code.gson/gson -->
 		<dependency>
 			<groupId>com.google.code.gson</groupId>
 			<artifactId>gson</artifactId>
@@ -137,20 +135,20 @@
 					</execution>
 				</executions>
 			</plugin>
-			<!--<plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-gpg-plugin</artifactId>
-                <version>1.6</version>
-                <executions>
-                    <execution>
-                        <id>sign-artifacts</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>sign</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>-->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-gpg-plugin</artifactId>
+				<version>1.6</version>
+				<executions>
+					<execution>
+						<id>sign-artifacts</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>sign</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 	</build>
 </project>
