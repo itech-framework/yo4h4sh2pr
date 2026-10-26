@@ -20,16 +20,20 @@ public class CleanupRegistry {
 
     public static void cleanup() {
         logger.info("Starting resource cleanup...");
-        TaskWithPriority next;
-        while ((next = tasks.poll()) != null) {
-            try {
-                logger.debug("Executing cleanup task with priority: {}", next.priority());
-                next.task().run();
-            } catch (Exception e) {
-                logger.error("Cleanup task failed", e);
+        try {
+            TaskWithPriority next;
+            while ((next = tasks.poll()) != null) {
+                try {
+                    logger.debug("Executing cleanup task with priority: {}", next.priority());
+                    next.task().run();
+                } catch (Exception e) {
+                    logger.error("Cleanup task failed", e);
+                }
             }
+            logger.info("Resource cleanup completed.");
+        } finally {
+            LogManager.shutdown();
         }
-        logger.info("Resource cleanup completed.");
     }
 
     private record TaskWithPriority(Runnable task, int priority) {}

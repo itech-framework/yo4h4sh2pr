@@ -28,7 +28,7 @@ import java.lang.annotation.Target;
  * @see io.github.itech_framework.core.annotations.components.Component
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.FIELD)
+@Target({ElementType.FIELD, ElementType.PARAMETER})
 public @interface Use {
     /**
      * Specifies a named component for qualified injection

@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -41,6 +42,8 @@ final class BeanFactory {
     private final Set<Object> initialized = Collections.newSetFromMap(new IdentityHashMap<>());
     private final Map<Class<?>, Constructor<?>> constructors = new ConcurrentHashMap<>();
 
+    private final Set<String> ambiguousAliases = new HashSet<>();
+    
     void define(BeanDefinition definition) {
         String key = definition.key();
         if (byKey.containsKey(key) || ComponentStore.components.containsKey(key)) {
@@ -49,14 +52,30 @@ final class BeanFactory {
         index(key, definition);
         definitions.add(definition);
         for (String alias : definition.aliases()) {
-            if (byKey.containsKey(alias) || ComponentStore.components.containsKey(alias)) {
-                if (!definition.isFactory()) {
-                    throw new FrameworkException("Duplicate component key for interface: " + alias);
-                }
+            if (ambiguousAliases.contains(alias)) {
                 continue;
             }
-            index(alias, definition);
+            BeanDefinition existing = byKey.get(alias);
+            if (existing == null && !ComponentStore.components.containsKey(alias)) {
+                index(alias, definition);
+                continue;
+            }
+            boolean sharedInterface = existing != null
+                    && !existing.key().equals(alias)
+                    && existing.aliases().contains(alias)
+                    && !existing.isFactory()
+                    && !definition.isFactory();
+            if (sharedInterface) {
+                byKey.remove(alias);
+                unindexSimpleName(alias, existing);
+                ambiguousAliases.add(alias);
+            }
         }
+    }
+
+    private void unindexSimpleName(String name, BeanDefinition definition) {
+        int dot = name.lastIndexOf('.');
+        bySimpleName.remove(dot < 0 ? name : name.substring(dot + 1), definition);
     }
 
     boolean isDefined(String key) {
@@ -255,7 +274,8 @@ final class BeanFactory {
 
     private Object resolveArgument(Parameter parameter, Set<String> path, List<Object> dependencies) {
         Class<?> type = parameter.getType();
-        Object shared = resolveShared(type, "", path);
+        Use use = parameter.getAnnotation(Use.class);
+        Object shared = resolveShared(type, use == null ? "" : use.name(), path);
         if (shared != null) {
             if (dependencies != null) {
                 dependencies.add(shared);
