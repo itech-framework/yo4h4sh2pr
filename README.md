@@ -31,7 +31,7 @@ Add to your project via Maven:
 <dependency>
    <groupId>io.github.itech-framework</groupId>
    <artifactId>core</artifactId>
-   <version>1.0.12-RC1</version> <!-- Latest version -->
+   <version>${framework-version}</version> <!-- Latest version -->
 </dependency>
 ```
 
