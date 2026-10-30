@@ -3,25 +3,44 @@ package io.github.itech_framework.core.module;
 import io.github.itech_framework.core.store.ComponentStore;
 
 public class ComponentRegistry {
-    public void registerComponent(String name, Object component, int level) {
-        ComponentStore.registerComponent(name, component, level);
+    private final ComponentStore store;
+
+    public ComponentRegistry() {
+        this.store = null;
     }
 
-    // Type-safe generic registration (recommended)
+    public ComponentRegistry(ComponentStore store) {
+        if (store == null) {
+            throw new IllegalArgumentException("Component store must not be null");
+        }
+        this.store = store;
+    }
+
+    private ComponentStore target() {
+        return store != null ? store : ComponentStore.current();
+    }
+
+    public void registerComponent(String name, Object component, int level) {
+        target().registerComponent(name, component, level);
+    }
+
     public <T> void registerComponent(Class<T> componentType, T componentInstance, int level) {
         validateComponentType(componentType, componentInstance);
-        ComponentStore.registerComponent(componentType.getName(), componentInstance, level);
+        target().registerComponent(componentType.getName(), componentInstance, level);
     }
 
-    // Auto-type registration using instance's class
     public void registerComponent(Object componentInstance, int level) {
         Class<?> componentType = componentInstance.getClass();
-        ComponentStore.registerComponent(componentType.getName(), componentInstance, level);
+        target().registerComponent(componentType.getName(), componentInstance, level);
     }
 
     public <T> void registerComponentAsInterface(Class<T> interfaceType, T implementation, int level) {
         validateInterface(interfaceType);
-        ComponentStore.registerComponent(interfaceType.getName(), implementation, level);
+        target().registerComponent(interfaceType.getName(), implementation, level);
+    }
+    
+    public boolean hasComponent(String name) {
+        return target().hasComponent(name);
     }
 
     private <T> void validateComponentType(Class<T> expectedType, Object component) {

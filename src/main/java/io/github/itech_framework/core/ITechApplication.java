@@ -2,6 +2,8 @@ package io.github.itech_framework.core;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import io.github.itech_framework.core.processor.components_processor.ApplicationContext;
 import io.github.itech_framework.core.processor.components_processor.ComponentProcessor;
 
 /**
@@ -34,8 +36,9 @@ public class ITechApplication {
      *   <li>Handle any initialization errors by logging and rethrowing</li>
      * </ul>
      */
-    public static void run(Class<?> clazz) throws Exception {
-    	ComponentProcessor.initialize(clazz);
+    public static ApplicationContext run(Class<?> clazz) throws Exception {
+        ApplicationContext context = ComponentProcessor.initialize(clazz);
         logger.debug("Components initialized!");
+        return context;
     }
 }

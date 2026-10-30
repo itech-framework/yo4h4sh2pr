@@ -1,6 +1,7 @@
 package io.github.itech_framework.core.processor.components_processor;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -44,18 +46,34 @@ public class ComponentProcessor {
 
     private static final Logger logger = LogManager.getLogger(ComponentProcessor.class);
     private static final AtomicBoolean SHUTDOWN_HOOK = new AtomicBoolean();
-    private static volatile BeanFactory beanFactory = new BeanFactory();
+    private static volatile BeanFactory beanFactory = new BeanFactory(ComponentStore.current(), CleanupRegistry.current());
+    
+    private static final String JPA_CONFIG_CLASS = "io.github.itech_framework.jpa.config.FlexiJpaConfig";
 
-    public static void initialize(Class<?> clazz) throws Exception {
+    private static volatile ApplicationContext context;
+
+
+    public static ApplicationContext initialize(Class<?> clazz) throws Exception {
+        return initialize(clazz, store -> { });
+    }
+
+    public static ApplicationContext initialize(Class<?> clazz, Consumer<ComponentStore> preStart) throws Exception {
         ComponentScan componentScan = clazz.getAnnotation(ComponentScan.class);
         if (componentScan == null) {
-            logger.debug("No @ComponentScan on {}", clazz.getName());
-            return;
+            throw new FrameworkException("""
+                    Class %s is missing @ComponentScan, so no components would be registered.
+                    Add @ComponentScan(basePackage = "your.base.package") to this class, \
+                    or pass the class that carries it to initialize().
+                    """.formatted(clazz.getName()));
         }
 
         PropertiesLoader.load(componentScan.properties(), clazz);
 
-        ComponentRegistry registry = new ComponentRegistry();
+        ComponentStore store = new ComponentStore();
+        CleanupRegistry cleanupRegistry = new CleanupRegistry();
+        BeanFactory factory = new BeanFactory(store, cleanupRegistry);
+
+        ComponentRegistry registry = new ComponentRegistry(store);
         for (ModuleInitializer initializer : ServiceLoader.load(ModuleInitializer.class)) {
             initializer.initialize(registry);
         }
@@ -69,20 +87,22 @@ public class ComponentProcessor {
             ServiceLoader.load(ComponentInitializer.class).forEach(componentInitializers::add);
         }
 
-        BeanFactory factory = new BeanFactory();
         List<BeanDefinition> scanned = new ArrayList<>();
         Boolean jpaAvailable = null;
-        for (Class<?> candidate : PackageClassesLoader.findAllClasses(componentScan.basePackage(), clazz)) {
+        String basePackage = componentScan.basePackage().isBlank()
+                ? clazz.getPackageName()
+                : componentScan.basePackage();
+        for (Class<?> candidate : PackageClassesLoader.findAllClasses(basePackage, clazz)) {
             if (isJpaEntity(candidate)) {
                 if (jpaAvailable == null) {
-                    jpaAvailable = isJpaModuleAvailable();
+                    jpaAvailable = isJpaModuleAvailable(store);
                 }
                 if (!jpaAvailable) {
                     throw jpaUnavailable(candidate);
                 }
             }
             for (ComponentInitializer initializer : componentInitializers) {
-                initializer.initializeComponent(candidate);
+                initializer.initializeComponent(candidate, registry, cleanupRegistry);
             }
             BeanDefinition definition = describe(candidate);
             if (definition != null) {
@@ -95,18 +115,38 @@ public class ComponentProcessor {
         }
 
         String storageKey = DataStorageService.class.getName();
-        if (!factory.isDefined(storageKey) && ComponentStore.getComponent(storageKey) == null) {
-            ComponentStore.registerComponent(storageKey, new DefaultDataStorageService(), DEFAULT_LEVEL);
+        if (!factory.isDefined(storageKey) && !store.hasComponent(storageKey)) {
+            store.registerComponent(storageKey, new DefaultDataStorageService(clazz), ComponentStore.DEFAULT_LEVEL);
         }
 
+        preStart.accept(store);
+
+        ApplicationContext previous = context;
+        ApplicationContext created = new ApplicationContext(store, cleanupRegistry, factory);
+        if (previous != null) {
+            previous.close();
+        }
+        ComponentStore.setCurrent(store);
+        CleanupRegistry.setCurrent(cleanupRegistry);
         beanFactory = factory;
+        context = created;
         factory.start();
 
         if (SHUTDOWN_HOOK.compareAndSet(false, true)) {
-            Runtime.getRuntime().addShutdownHook(new Thread(CleanupRegistry::cleanup));
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    CleanupRegistry.current().cleanup();
+                } catch (RuntimeException e) {
+                    logger.error("Shutdown cleanup finished with failures", e);
+                } finally {
+                    LogManager.shutdown();
+                }
+            }));
         }
-    }
 
+        return created;
+    }
+    
     public static void injectFields(Class<?> clazz, Object instance) {
         beanFactory.injectFields(clazz, instance);
     }
@@ -182,23 +222,38 @@ public class ComponentProcessor {
         return false;
     }
 
-    private static boolean isJpaModuleAvailable() {
+    private static boolean isJpaModuleAvailable(ComponentStore store) {
+        Class<?> configClass;
         try {
-            Class<?> configClass = Class.forName("io.github.itech_framework.jpa.config.FlexiJpaConfig");
-            Object config = ComponentStore.getComponent(configClass.getName());
-            if (config == null) {
-                return false;
-            }
-            return (boolean) configClass.getMethod("isInitialized").invoke(config);
-        } catch (Exception e) {
+            configClass = Class.forName(JPA_CONFIG_CLASS);
+        } catch (ClassNotFoundException e) {
+            logger.debug("JPA module not on the classpath");
             return false;
+        } catch (LinkageError e) {
+            throw new FrameworkException("JPA module found but could not be loaded: " + e.getMessage(), e);
+        }
+
+        Object config = store.getComponent(configClass.getName());
+        if (config == null) {
+            logger.debug("JPA module found but {} is not registered", JPA_CONFIG_CLASS);
+            return false;
+        }
+
+        try {
+            return (boolean) configClass.getMethod("isInitialized").invoke(config);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            throw new FrameworkException("JPA initialization check failed: " + cause.getMessage(), cause);
+        } catch (ReflectiveOperationException | ClassCastException e) {
+            throw new FrameworkException("JPA module is incompatible: " + JPA_CONFIG_CLASS
+                    + " does not expose a usable boolean isInitialized()", e);
         }
     }
 
     private static FrameworkException jpaUnavailable(Class<?> entity) {
         StringBuilder error = new StringBuilder("JPA required but not available.\n");
         try {
-            Class.forName("io.github.itech_framework.jpa.config.FlexiJpaConfig");
+        	Class.forName(JPA_CONFIG_CLASS);
             error.append("- JPA module found but initialization failed\n");
             error.append("- Check your jpa.* properties configuration");
         } catch (ClassNotFoundException e) {
@@ -218,5 +273,9 @@ public class ComponentProcessor {
                     <artifactId>java-fx</artifactId>
                     """);
         }
+    }
+    
+    public static ApplicationContext context() {
+        return context;
     }
 }

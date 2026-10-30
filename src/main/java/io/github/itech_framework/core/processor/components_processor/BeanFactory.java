@@ -43,10 +43,20 @@ final class BeanFactory {
     private final Map<Class<?>, Constructor<?>> constructors = new ConcurrentHashMap<>();
 
     private final Set<String> ambiguousAliases = new HashSet<>();
+    private final ComponentStore store;
+    private final CleanupRegistry cleanupRegistry;
+
+    BeanFactory(ComponentStore store, CleanupRegistry cleanupRegistry) {
+        if (store == null || cleanupRegistry == null) {
+            throw new IllegalArgumentException("Component store and cleanup registry must not be null");
+        }
+        this.store = store;
+        this.cleanupRegistry = cleanupRegistry;
+    }
     
     void define(BeanDefinition definition) {
         String key = definition.key();
-        if (byKey.containsKey(key) || ComponentStore.components.containsKey(key)) {
+        if (byKey.containsKey(key) || store.hasComponent(key)) {
             throw new FrameworkException("Duplicate component key: " + key);
         }
         index(key, definition);
@@ -56,7 +66,7 @@ final class BeanFactory {
                 continue;
             }
             BeanDefinition existing = byKey.get(alias);
-            if (existing == null && !ComponentStore.components.containsKey(alias)) {
+            if (existing == null && !store.hasComponent(alias)) {
                 index(alias, definition);
                 continue;
             }
@@ -88,7 +98,7 @@ final class BeanFactory {
         for (BeanDefinition definition : sorted) {
             singleton(definition, new LinkedHashSet<>());
         }
-        for (Object instance : ComponentStore.getAllComponents()) {
+        for (Object instance : ComponentStore.current().getAllComponents()) {
             initialize(instance, new LinkedHashSet<>());
         }
         creationDependencies.clear();
@@ -123,7 +133,7 @@ final class BeanFactory {
     }
 
     private Object singleton(BeanDefinition definition, Set<String> path) {
-        Object existing = ComponentStore.components.get(definition.key());
+        Object existing = store.getComponent(definition.key());
         if (existing != null) {
             return existing;
         }
@@ -178,17 +188,17 @@ final class BeanFactory {
     }
 
     private void register(BeanDefinition definition, Object instance) {
-        ComponentStore.registerComponent(definition.key(), instance, definition.level());
+        ComponentStore.current().registerComponent(definition.key(), instance, definition.level());
         for (String alias : definition.aliases()) {
             if (byKey.get(alias) == definition) {
-                ComponentStore.registerComponent(alias, instance, definition.level());
+                ComponentStore.current().registerComponent(alias, instance, definition.level());
             }
         }
         if (definition.isFactory() && !AnnotationUtils.hasAnnotation(instance.getClass(), IgnoreInterfaces.class)) {
             for (Class<?> iface : instance.getClass().getInterfaces()) {
                 String name = iface.getName();
-                if (!byKey.containsKey(name) && !ComponentStore.components.containsKey(name)) {
-                    ComponentStore.registerComponent(name, instance, definition.level());
+                if (!byKey.containsKey(name) && !store.hasComponent(name)) {
+                    ComponentStore.current().registerComponent(name, instance, definition.level());
                 }
             }
         }
@@ -215,7 +225,7 @@ final class BeanFactory {
         }
         injectFields(metadata, instance, path);
         runInit(metadata, instance);
-        registerDestroy(metadata, instance, ComponentStore.levelOf(instance));
+        registerDestroy(metadata, instance, ComponentStore.current().levelOf(instance));
     }
 
     private Constructor<?> selectConstructor(Class<?> type) {
@@ -255,7 +265,7 @@ final class BeanFactory {
             Class<?> type = parameter.getType();
             boolean known = !isValueType(type)
                     && (byKey.containsKey(type.getName())
-                    || ComponentStore.components.containsKey(type.getName())
+                    || store.hasComponent(type.getName())
                     || countAssignable(type) == 1);
             if (!known && !parameter.isAnnotationPresent(DefaultParameter.class)) {
                 return false;
@@ -286,7 +296,13 @@ final class BeanFactory {
         if (defaultParameter != null) {
             return ObjectUtils.convertValue(defaultParameter.value(), type);
         }
-        return defaultValueFor(parameter);
+        return missingArgument(parameter);
+    }
+    
+    private static Object missingArgument(Parameter parameter) {
+        throw new FrameworkException("Cannot resolve parameter '" + parameter.getName() + "' of type "
+                + parameter.getType().getName() + " in " + parameter.getDeclaringExecutable()
+                + ": no component is registered for it and it has no @DefaultParameter");
     }
 
     private Object resolveShared(Class<?> type, String name, Set<String> path) {
@@ -294,7 +310,7 @@ final class BeanFactory {
             return null;
         }
         String key = name.isEmpty() ? type.getName() : name;
-        Object existing = ComponentStore.components.get(key);
+        Object existing = store.getComponent(key);
         if (existing != null) {
             return existing;
         }
@@ -336,7 +352,7 @@ final class BeanFactory {
     }
 
     private Object uniqueInstance(Class<?> type) {
-        List<?> found = ComponentStore.findByType(type);
+        List<?> found = ComponentStore.current().findByType(type);
         if (found.size() > 1) {
             throw new FrameworkException("Multiple components match type " + type.getName()
                     + ". Use @Use(name = \"...\") to choose one.");
@@ -365,10 +381,12 @@ final class BeanFactory {
 
     private void injectProperty(FieldPlan plan, Object instance) throws IllegalAccessException {
         Property property = plan.property();
-        String value = PropertiesLoader.getProperty(property.key(), property.defaultValue());
-        if (value == null || value.isEmpty()) {
+        String value = PropertiesLoader.getProperty(property.key(), null);
+        if (value == null) {
             if (property.defaultValue().isEmpty()) {
-                throw new IllegalStateException("Property '" + property.key() + "' not found and no default value specified");
+                throw new FrameworkException("Property '" + property.key()
+                        + "' not found and no default value specified (field "
+                        + plan.field().getDeclaringClass().getName() + "." + plan.field().getName() + ")");
             }
             value = property.defaultValue();
         }
@@ -396,18 +414,15 @@ final class BeanFactory {
         DataStorage dataStorage = plan.storage();
         Field field = plan.field();
         String key = dataStorage.key().isEmpty() ? field.getName() : dataStorage.key();
-        DataStorageService service = (DataStorageService) ComponentStore.getComponent(DataStorageService.class.getName());
+        DataStorageService service = (DataStorageService) ComponentStore.current().getComponent(DataStorageService.class.getName());
         if (service == null) {
             throw new IllegalStateException("No StorageService available for @DataStorage");
         }
-        String stored = service.load(key);
-        Object value;
-        if (stored != null) {
-            value = ObjectUtils.convertValue(stored, field.getType());
-        } else if (!dataStorage.defaultValue().isEmpty()) {
-            value = ObjectUtils.convertValue(dataStorage.defaultValue(), field.getType());
-        } else {
-            value = field.get(instance);
+        Object value = service.load(key, field.getType());
+        if (value == null) {
+            value = !dataStorage.defaultValue().isEmpty()
+                    ? ObjectUtils.convertValue(dataStorage.defaultValue(), field.getType())
+                    : field.get(instance);
         }
         field.set(instance, value);
     }
@@ -428,7 +443,7 @@ final class BeanFactory {
             if (definition != null) {
                 return concreteType(definition.key());
             }
-            List<?> found = ComponentStore.findByType(fieldType);
+            List<?> found = ComponentStore.current().findByType(fieldType);
             if (found.size() == 1) {
                 return found.get(0).getClass();
             }
@@ -439,7 +454,7 @@ final class BeanFactory {
     }
 
     private Class<?> concreteType(String name) {
-        Object shared = ComponentStore.components.get(name);
+        Object shared = store.getComponent(name);
         if (shared != null) {
             return shared.getClass();
         }
@@ -450,7 +465,7 @@ final class BeanFactory {
         if (definition == null) {
             return null;
         }
-        Object created = ComponentStore.components.get(definition.key());
+        Object created = store.getComponent(definition.key());
         return created != null ? created.getClass() : definition.type();
     }
 
@@ -507,7 +522,7 @@ final class BeanFactory {
 
     private void registerDestroy(ClassMetadata metadata, Object instance, int level) {
         for (Method method : metadata.destroyMethods()) {
-            CleanupRegistry.register(() -> invokeDestroy(metadata, method, instance), level);
+            cleanupRegistry.register(() -> invokeDestroy(metadata, method, instance), level);
         }
     }
 
@@ -521,25 +536,6 @@ final class BeanFactory {
 
     private static boolean isValueType(Class<?> type) {
         return type.isPrimitive() || type.getName().startsWith("java.lang.");
-    }
-
-    private static Object defaultValueFor(Parameter parameter) {
-        Class<?> type = parameter.getType();
-        if (type == int.class) return 0;
-        if (type == double.class) return 0.0;
-        if (type == long.class) return 0L;
-        if (type == float.class) return 0.0f;
-        if (type == short.class) return (short) 0;
-        if (type == byte.class) return (byte) 0;
-        if (type == boolean.class) return false;
-        if (type == char.class) return '\0';
-        if (type == Integer.class || type == Double.class || type == Long.class || type == Float.class
-                || type == Short.class || type == Byte.class || type == Boolean.class
-                || type == Character.class || type == String.class) {
-            return null;
-        }
-        throw new FrameworkException("Cannot resolve parameter '" + parameter.getName() + "' of type "
-                + type.getName() + ": no component registered for it");
     }
 
     private static FrameworkException circular(Set<String> path, String key) {

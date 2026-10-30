@@ -1,72 +1,96 @@
 package io.github.itech_framework.core.utils;
 
+import java.lang.reflect.Field;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import io.github.itech_framework.core.annotations.storage.DataStorage;
+import io.github.itech_framework.core.exceptions.FrameworkException;
 import io.github.itech_framework.core.storage.DataStorageService;
 import io.github.itech_framework.core.store.ComponentStore;
 
-import java.lang.reflect.Field;
-import java.util.Arrays;
-
 public class DataStorageUtil {
-	private static final Logger logger = LogManager.getLogger(DataStorageUtil.class);
+    private static final Logger logger = LogManager.getLogger(DataStorageUtil.class);
 
-	public static void save(String key, Object value) {
-		if (key == null || value == null)
-			return;
+    public static void save(String key, Object value) {
+        checkKey(key);
+        DataStorageService storage = requireStorage();
 
-		updateComponentField(key, value);
+        if (value == null) {
+            storage.save(key, (String) null);
+            logger.debug("Removed stored value for key '{}'", key);
+            return;
+        }
 
-		DataStorageService storage = (DataStorageService) ComponentStore
-				.getComponent(DataStorageService.class.getName());
-		if (storage != null) {
-			storage.save(key, value.toString());
-		}
-	}
+        storage.save(key, value);
+        updateComponentFields(key, value);
+    }
 
-	public static Object load(String key) {
-		DataStorageService storage = (DataStorageService) ComponentStore
-				.getComponent(DataStorageService.class.getName());
-		if (storage != null) {
-			return storage.load(key);
-		}
-		return null;
-	}
+    public static Object load(String key) {
+        checkKey(key);
+        return requireStorage().load(key);
+    }
 
-	public static <T> T load(String key, Class<T> type) {
-		DataStorageService storage = (DataStorageService) ComponentStore
-				.getComponent(DataStorageService.class.getName());
-		if (storage != null) {
-			return storage.load(key, type);
-		}
-		return null;
-	}
+    public static <T> T load(String key, Class<T> type) {
+        checkKey(key);
+        if (type == null) {
+            throw new IllegalArgumentException("Target type must not be null");
+        }
+        return requireStorage().load(key, type);
+    }
 
-	private static void updateComponentField(String key, Object value) {
-		ComponentStore.components.values().stream().filter(component -> hasMatchingField(component, key))
-				.forEach(component -> setFieldValue(component, key, value));
-	}
+    private static void checkKey(String key) {
+        if (key == null || key.isBlank()) {
+            throw new IllegalArgumentException("Storage key must not be null or blank");
+        }
+    }
 
-	private static boolean hasMatchingField(Object component, String key) {
-		return Arrays.stream(component.getClass().getDeclaredFields()).anyMatch(f -> {
-			DataStorage ann = f.getAnnotation(DataStorage.class);
-			return ann != null && (ann.key().isEmpty() ? f.getName() : ann.key()).equals(key);
-		});
-	}
+    private static DataStorageService requireStorage() {
+        Object component = ComponentStore.current().getComponent(DataStorageService.class.getName());
+        if (component == null) {
+            throw new FrameworkException("No DataStorageService is registered. "
+                    + "Make sure ComponentProcessor.initialize() ran before using DataStorageUtil.");
+        }
+        return (DataStorageService) component;
+    }
 
-	private static void setFieldValue(Object component, String key, Object value) {
-		try {
-			Field field = Arrays.stream(component.getClass().getDeclaredFields()).filter(f -> {
-				DataStorage ann = f.getAnnotation(DataStorage.class);
-				return ann != null && (ann.key().isEmpty() ? f.getName() : ann.key()).equals(key);
-			}).findFirst().orElseThrow();
+    private static void updateComponentFields(String key, Object value) {
+    	List<Object> components = ComponentStore.current().getAllComponents();
+        for (Object component : components) {
+            Optional<Field> field = findField(component, key);
+            if (field.isPresent()) {
+                setFieldValue(component, field.get(), key, value);
+            }
+        }
+    }
 
-			field.setAccessible(true);
-			Object converted = ObjectUtils.convertValue(value.toString(), field.getType());
-			field.set(component, converted);
-		} catch (Exception e) {
-			logger.error("Failed to update field for key: {}", key, e);
-		}
-	}
+    private static Optional<Field> findField(Object component, String key) {
+        return Arrays.stream(component.getClass().getDeclaredFields())
+                .filter(f -> {
+                    DataStorage annotation = f.getAnnotation(DataStorage.class);
+                    return annotation != null
+                            && (annotation.key().isEmpty() ? f.getName() : annotation.key()).equals(key);
+                })
+                .findFirst();
+    }
+
+    private static void setFieldValue(Object component, Field field, String key, Object value) {
+        try {
+            field.setAccessible(true);
+            Class<?> fieldType = field.getType();
+            Object converted = !fieldType.isPrimitive() && fieldType.isInstance(value)
+                    ? value
+                    : ObjectUtils.convertValue(value.toString(), fieldType);
+            field.set(component, converted);
+            logger.debug("Updated field '{}' on {} for key '{}'",
+                    field.getName(), component.getClass().getName(), key);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            throw new FrameworkException("Value for key '" + key + "' was saved, but field '" + field.getName()
+                    + "' on " + component.getClass().getName() + " could not be updated", e);
+        }
+    }
 }
