@@ -9,9 +9,9 @@ import java.util.Date;
 import java.util.regex.Pattern;
 
 public class CommonValidator {
-	
-	private static final Pattern NUMERIC = Pattern.compile("[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?");
-	
+    
+    private static final Pattern NUMERIC = Pattern.compile("[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?");
+    
     public static boolean isValidObject(Object obj) {
         return obj != null;
     }

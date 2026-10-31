@@ -20,16 +20,16 @@ import io.github.itech_framework.core.utils.PropertiesLoader;
 
 class ComponentProcessorTest {
 
-	@BeforeEach
-	void resetState() {
-	    ApplicationContext existing = ComponentProcessor.context();
-	    if (existing != null) {
-	        existing.close();
-	    }
-	    PropertiesLoader.reset();
-	    OkService.DESTROYED.set(0);
-	    CreatedFirst.DESTROYED.set(0);
-	}
+    @BeforeEach
+    void resetState() {
+        ApplicationContext existing = ComponentProcessor.context();
+        if (existing != null) {
+            existing.close();
+        }
+        PropertiesLoader.reset();
+        OkService.DESTROYED.set(0);
+        CreatedFirst.DESTROYED.set(0);
+    }
 
     @Test
     void failsWithAClearMessageWhenComponentScanIsMissing() {

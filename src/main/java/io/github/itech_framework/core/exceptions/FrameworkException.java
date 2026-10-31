@@ -2,11 +2,11 @@ package io.github.itech_framework.core.exceptions;
 
 public class FrameworkException extends RuntimeException {
     /**
-	 * 
-	 */
-	private static final long serialVersionUID = 7238973558395813814L;
+     * 
+     */
+    private static final long serialVersionUID = 7238973558395813814L;
 
-	public FrameworkException(String message) {
+    public FrameworkException(String message) {
         super(message);
     }
 
@@ -14,7 +14,7 @@ public class FrameworkException extends RuntimeException {
         super(message, e);
     }
 
-	public FrameworkException(String message, Throwable e) {
-		super(message, e);
-	}
+    public FrameworkException(String message, Throwable e) {
+        super(message, e);
+    }
 }

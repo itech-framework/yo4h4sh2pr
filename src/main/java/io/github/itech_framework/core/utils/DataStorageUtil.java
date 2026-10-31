@@ -58,7 +58,7 @@ public class DataStorageUtil {
     }
 
     private static void updateComponentFields(String key, Object value) {
-    	List<Object> components = ComponentStore.current().getAllComponents();
+        List<Object> components = ComponentStore.current().getAllComponents();
         for (Object component : components) {
             Optional<Field> field = findField(component, key);
             if (field.isPresent()) {

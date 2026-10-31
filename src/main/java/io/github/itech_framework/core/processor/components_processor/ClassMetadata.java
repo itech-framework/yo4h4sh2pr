@@ -37,14 +37,14 @@ record ClassMetadata(Class<?> type, boolean disabled, List<FieldPlan> fields, Li
     }
 
     @SuppressWarnings("removal")
-	private static ClassMetadata build(Class<?> type) {
+    private static ClassMetadata build(Class<?> type) {
         List<FieldPlan> fields = new ArrayList<>();
         for (Class<?> current = type; current != null && current != Object.class; current = current.getSuperclass()) {
             for (Field field : current.getDeclaredFields()) {
-            	if (field.isAnnotationPresent(Rx.class)) {
-            	    throw new FrameworkException("Field " + current.getName() + "." + field.getName()
-            	            + " uses the removed @Rx annotation. Replace it with @Use.");
-            	}
+                if (field.isAnnotationPresent(Rx.class)) {
+                    throw new FrameworkException("Field " + current.getName() + "." + field.getName()
+                            + " uses the removed @Rx annotation. Replace it with @Use.");
+                }
                 Property property = field.getAnnotation(Property.class);
                 Use use = field.getAnnotation(Use.class);
                 DataStorage storage = field.getAnnotation(DataStorage.class);
