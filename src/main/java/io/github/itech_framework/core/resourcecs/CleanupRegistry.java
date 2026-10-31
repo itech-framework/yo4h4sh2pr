@@ -17,6 +17,10 @@ public class CleanupRegistry {
     private final Object lock = new Object();
     private final List<Entry> entries = new ArrayList<>();
     private long sequence;
+    
+    public static final int BEAN_PRIORITY = 0;
+    public static final int BEFORE_BEANS = 100;
+    public static final int AFTER_BEANS = -100;
 
     public static CleanupRegistry current() {
         return current;

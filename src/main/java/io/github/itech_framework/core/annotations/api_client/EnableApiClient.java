@@ -6,30 +6,30 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Enables and configures API client support in the ITech Framework
+ * Activates API client support on the main application class.
  * <p>
- * When applied to a main application class, this annotation activates the API client infrastructure
- * and configures the scanning for API client interfaces. Typically used in conjunction with
- * {@link io.github.itech_framework.core.annotations.ComponentScan} for comprehensive component management.
+ * When this annotation is present, the core loads every {@code ComponentInitializer}
+ * service found through {@link java.util.ServiceLoader} and calls it once for each
+ * scanned class. The API client module uses this hook to find its client interfaces
+ * and register generated implementations. Use it together with
+ * {@link io.github.itech_framework.core.annotations.ComponentScan}.
  * </p>
  *
  * @author Sai Zaw Myint
  * @since 1.0.0
+ * @version 1.1.0
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface EnableApiClient {
     /**
-     * Enables or disables the API client auto-configuration
+     * Reserved switch for API client auto-configuration.
      * <p>
-     * When set to {@code true} (default), the framework will automatically:
-     * <ul>
-     *   <li>Scan for interfaces annotated with @ApiClient</li>
-     *   <li>Generate implementation classes at runtime</li>
-     *   <li>Register API clients in the application context</li>
-     * </ul>
+     * In this version the core only checks whether the annotation is present; the
+     * value is not evaluated. Remove the annotation to turn API client support off.
      * </p>
-     * @return {@code true} to enable API client support, {@code false} to disable
+     *
+     * @return {@code true} by default
      */
     boolean value() default true;
 

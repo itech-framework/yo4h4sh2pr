@@ -6,19 +6,18 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Enables JavaFX integration and context configuration
+ * Declares that the application uses the ITech JavaFX module.
  * <p>
- * Marks an application class to activate JavaFX framework support, typically used for:
- * <ul>
- *   <li>Initializing the JavaFX application thread</li>
- *   <li>Configuring dependency injection for JavaFX components</li>
- *   <li>Enabling automatic FXML loading and controller wiring</li>
- * </ul>
- * Required for applications using JavaFX UI components and features.
+ * At startup the core checks that the JavaFX module
+ * ({@code io.github.itech_framework:java-fx}) is on the classpath. If it is missing,
+ * startup fails with a {@code FrameworkException} that shows the Maven dependency to
+ * add. The JavaFX specific work itself (application launch, FXML loading, controller
+ * wiring) is done by that module, not by the core.
  * </p>
  *
  * @author Sai Zaw Myint
  * @since 1.0.0
+ * @version 1.1.0
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.TYPE})

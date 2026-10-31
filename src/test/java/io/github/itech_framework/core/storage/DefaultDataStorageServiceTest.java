@@ -80,12 +80,6 @@ class DefaultDataStorageServiceTest {
         assertEquals(Mode.DARK, service.load("mode", Mode.class));
     }
 
-    @Test
-    void throwsWhenAStoredValueCannotBeConverted() {
-        current.put("count", "not a number");
-
-        assertThrows(DataStorageException.class, () -> service.load("count", int.class));
-    }
 
     @Test
     void rejectsOversizedValuesAndSavesNothing() {
@@ -135,5 +129,32 @@ class DefaultDataStorageServiceTest {
         DefaultDataStorageService migrated = new DefaultDataStorageService(current, legacy);
 
         assertEquals("light", migrated.load("theme"));
+    }
+    
+    @Test
+    void loadsLegacyWindowsPathsWithBackslashes() {
+        current.put("path", "C:\\Program Files\\App");
+
+        assertEquals("C:\\Program Files\\App", service.load("path", String.class));
+    }
+    
+    @Test
+    void storesEnumsAndCharactersAsPlainText() {
+        service.save("mode", (Object) Mode.DARK);
+        service.save("letter", (Object) 'x');
+
+        assertEquals("DARK", current.get("mode", null));
+        assertEquals("x", current.get("letter", null));
+        assertEquals(Mode.DARK, service.load("mode", Mode.class));
+    }
+    
+    @Test
+    void throwsWhenAStoredValueCannotBeConverted() {
+        current.put("count", "not a number");
+
+        DataStorageException failure = assertThrows(DataStorageException.class,
+                () -> service.load("count", int.class));
+
+        assertEquals(1, failure.getCause().getSuppressed().length);
     }
 }

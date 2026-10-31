@@ -288,6 +288,19 @@ Components are layered by level. Level controls the initialization order of comp
 Data Access (0) → Business Logic (1) → Presentation (2) → Default (3)
 ```
 
+## Upgrading to 1.1.0
+
+This release changes the public API. Rebuild java-fx, jpa and api-client against it.
+
+- `ITechApplication.run` and `ComponentProcessor.initialize` return an `ApplicationContext`.
+- `ComponentStore` and `CleanupRegistry` are instance classes. Use `ComponentStore.current()` and `CleanupRegistry.current()`, or `ApplicationContext.store()`.
+- `CleanupRegistry.addTask` was removed. Use `register`.
+- `DefaultDataStorageService` needs the application class. Saved values move to the application's own preferences node, and values from the old shared node are copied once.
+- `@PreDestroy` runs in reverse initialization order.
+- Startup fails if a class in the scanned package cannot be loaded. Use `@ComponentScan(excludePackages = ...)` or `failOnLoadError = false`.
+- Unresolvable constructor parameters without `@DefaultParameter` fail startup.
+- `PropertiesLoader` reads the profile from `flexi.profiles.active`, then `FLEXI_PROFILES_ACTIVE`, then the properties file.
+
 ## Migrating from `@Rx` and `@BusinessLogic`
 
 | Old              | New        |

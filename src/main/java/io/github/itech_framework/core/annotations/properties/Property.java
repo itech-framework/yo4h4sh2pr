@@ -8,24 +8,34 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Injects values from property files into class fields
+ * Injects a value from the loaded property files into a field.
  * <p>
- * Automatically binds properties from application configuration files (.properties)
- * to class fields during component initialization. Supports type conversion and
- * default values when properties are missing.
+ * Values come from the files listed in
+ * {@link io.github.itech_framework.core.annotations.ComponentScan#properties()}
+ * (including any profile overlay) and are converted to the field type during field
+ * injection. Supported field types: {@code String}, {@code char}, all primitives and
+ * wrappers, enums (exact constant name), {@code BigDecimal}, {@code BigInteger},
+ * {@code Path}, {@code File}, {@code Duration} (ISO-8601 such as {@code PT5S}),
+ * {@code LocalDate}, {@code LocalDateTime} and {@code LocalTime}.
+ * </p>
+ * <p>
+ * If the key is missing and {@link #defaultValue()} is empty, startup fails with a
+ * {@code FrameworkException} that names the key and the field. An empty default means
+ * "required", so an intentionally empty default value cannot be expressed.
  * </p>
  *
  * <p>Example usage:</p>
  * <pre>{@code
  * @Property(key = "server.port", defaultValue = "8080")
  * private int port;
- * 
+ *
  * @Property(key = "api.endpoint")
  * private String apiUrl;
  * }</pre>
  *
  * @author Sai Zaw Myint
  * @since 1.0.0
+ * @version 1.1.0
  * @see Component
  */
 @Retention(RetentionPolicy.RUNTIME)
@@ -33,25 +43,23 @@ import java.lang.annotation.Target;
 @SuppressWarnings({"unused"})
 public @interface Property {
     /**
-     * The property key to retrieve from configuration files
+     * The property key to read.
      * <p>
-     * Supports nested properties using dot notation.
-     * Example: {@code database.connection.timeout}
+     * Keys are matched exactly as written (for example {@code database.connection.timeout});
+     * dots are part of the key and do not create nested structures.
      * </p>
-     * 
-     * @return The property key to look up
+     *
+     * @return the property key
      */
     String key();
 
     /**
-     * Fallback value if the property key is not found
+     * Value used when the key is not found, written as text and converted to the field type.
      * <p>
-     * The default value will be converted to the field's declared type using
-     * the framework's type conversion system. Leave empty to treat missing
-     * properties as errors unless the field is nullable.
+     * Leave empty to make the property required.
      * </p>
-     * 
-     * @return The default value as a String representation
+     *
+     * @return the default value, or an empty string if the property is required
      */
     String defaultValue() default "";
 }

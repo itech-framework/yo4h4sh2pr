@@ -23,6 +23,11 @@ public class PackageClassesLoader {
     private static final String CLASS_SUFFIX = ".class";
 
     public static List<Class<?>> findAllClasses(String basePackage, Class<?> clazz) throws IOException {
+        return findAllClasses(basePackage, clazz, new String[0], true);
+    }
+
+    public static List<Class<?>> findAllClasses(String basePackage, Class<?> clazz,
+            String[] excludePackages, boolean failOnLoadError) throws IOException {
         if (basePackage == null || basePackage.isBlank()) {
             throw new IllegalArgumentException("Base package must not be null or blank");
         }
@@ -35,6 +40,9 @@ public class PackageClassesLoader {
             throw new IOException("Class " + clazz.getName() + " has no class loader; cannot scan package " + basePackage);
         }
 
+        ScanOptions options = new ScanOptions(
+                excludePackages == null ? List.of() : List.of(excludePackages), failOnLoadError);
+
         String path = basePackage.replace('.', '/');
         Enumeration<URL> resources = classLoader.getResources(path);
         List<Class<?>> classes = new ArrayList<>();
@@ -46,8 +54,8 @@ public class PackageClassesLoader {
             String protocol = resource.getProtocol();
 
             switch (protocol) {
-                case "file", "jrt" -> classes.addAll(findClassesWithNio(resource, basePackage, classLoader));
-                case "jar" -> classes.addAll(findClassesInJar(resource, path, classLoader));
+                case "file", "jrt" -> classes.addAll(findClassesWithNio(resource, basePackage, classLoader, options));
+                case "jar" -> classes.addAll(findClassesInJar(resource, path, classLoader, options));
                 default -> throw new IOException("Unsupported resource protocol '" + protocol
                         + "' while scanning package " + basePackage + ": " + resource);
             }
@@ -80,7 +88,8 @@ public class PackageClassesLoader {
                 .replace('/', '.');
     }
 
-    private static List<Class<?>> findClassesWithNio(URL resource, String basePackage, ClassLoader classLoader) throws IOException {
+    private static List<Class<?>> findClassesWithNio(URL resource, String basePackage, ClassLoader classLoader,
+            ScanOptions options) throws IOException {
         List<Class<?>> classes = new ArrayList<>();
 
         Path root;
@@ -105,14 +114,18 @@ public class PackageClassesLoader {
             String relative = root.relativize(file).toString().replace('\\', '/');
             if (!isScannable(relative)) continue;
 
-            classes.add(loadClass(basePackage + "." + toClassName(relative), classLoader));
+            Class<?> loaded = loadClass(basePackage + "." + toClassName(relative), classLoader, options);
+            if (loaded != null) {
+                classes.add(loaded);
+            }
         }
 
         logger.debug("Found {} classes via {} in {}", classes.size(), resource.getProtocol(), basePackage);
         return classes;
     }
 
-    private static List<Class<?>> findClassesInJar(URL resource, String path, ClassLoader classLoader) throws IOException {
+    private static List<Class<?>> findClassesInJar(URL resource, String path, ClassLoader classLoader,
+            ScanOptions options) throws IOException {
         List<Class<?>> classes = new ArrayList<>();
         String prefix = path.endsWith("/") ? path : path + "/";
 
@@ -132,7 +145,10 @@ public class PackageClassesLoader {
                 if (entry.isDirectory() || !name.startsWith(prefix)) continue;
                 if (!isScannable(name)) continue;
 
-                classes.add(loadClass(toClassName(name), classLoader));
+                Class<?> loaded = loadClass(toClassName(name), classLoader, options);
+                if (loaded != null) {
+                    classes.add(loaded);
+                }
             }
         } catch (IOException e) {
             throw new IOException("Failed to read JAR resource: " + resource, e);
@@ -142,11 +158,34 @@ public class PackageClassesLoader {
         return classes;
     }
 
-    private static Class<?> loadClass(String className, ClassLoader classLoader) throws IOException {
+    private static Class<?> loadClass(String className, ClassLoader classLoader, ScanOptions options)
+            throws IOException {
+        if (options.isExcluded(className)) {
+            logger.debug("Excluded from scan: {}", className);
+            return null;
+        }
         try {
             return classLoader.loadClass(className);
         } catch (ClassNotFoundException | LinkageError e) {
-            throw new IOException("Could not load class " + className, e);
+            if (options.failOnLoadError()) {
+                throw new IOException("Could not load class " + className, e);
+            }
+            logger.warn("Skipping class {}: {}", className, e.toString());
+            return null;
+        }
+    }
+
+    private record ScanOptions(List<String> excludes, boolean failOnLoadError) {
+        boolean isExcluded(String className) {
+            for (String prefix : excludes) {
+                if (prefix == null || prefix.isBlank()) {
+                    continue;
+                }
+                if (className.equals(prefix) || className.startsWith(prefix + ".")) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

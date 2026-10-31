@@ -8,46 +8,37 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Enables and configures JPA (Java Persistence API) integration
+ * Declares that the application uses the ITech JPA module.
  * <p>
- * Activates JPA support and configures entity management when applied to a main configuration class.
- * Typically used in conjunction with {@link ComponentScan} for full persistence layer configuration.
+ * This annotation is read by the JPA module, not by the core. The core only
+ * enforces one rule: if a scanned class is a JPA entity ({@code javax.persistence.Entity}
+ * or {@code jakarta.persistence.Entity}) and the JPA module is missing or not
+ * initialized, startup fails with a {@code FrameworkException} that explains what to add
+ * or which {@code jpa.*} properties to check.
  * </p>
  *
  * @author Sai Zaw Myint
  * @since 1.0.0
+ * @version 1.1.0
  * @see ComponentScan
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.TYPE})
 public @interface EnableJPA {
     /**
-     * Enables or disables JPA auto-configuration
-     * <p>
-     * When set to {@code true} (default), configures:
-     * <ul>
-     *   <li>Entity manager factory</li>
-     *   <li>Transaction management</li>
-     *   <li>JPA repository support</li>
-     * </ul>
-     * </p>
-     * @return {@code true} to enable JPA support, {@code false} to disable
+     * Enables or disables JPA configuration, as interpreted by the JPA module.
+     *
+     * @return {@code true} (default) to enable JPA support
      */
     boolean value() default true;
 
     /**
-     * Base package to scan for JPA entities
+     * Package that contains the JPA entity classes, as interpreted by the JPA module.
      * <p>
-     * Specifies the package containing @Entity classes.
-     * If not specified, defaults to the package of the class annotated with {@code @EnableJPA}.
+     * Example: {@code @EnableJPA(entitiesPackage = "com.example.domain.entities")}
      * </p>
-     * <p>
-     * Example:
-     * <pre>{@code
-     * @EnableJPA(entitiesPackage = "com.example.domain.entities")
-     * }</pre>
-     * </p>
-     * @return The base package name for entity scanning
+     *
+     * @return the entity package, or an empty string to let the JPA module choose
      */
     String entitiesPackage() default "";
 }

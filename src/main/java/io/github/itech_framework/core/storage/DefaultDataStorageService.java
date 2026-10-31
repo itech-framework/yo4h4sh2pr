@@ -107,6 +107,7 @@ public class DefaultDataStorageService implements DataStorageService {
             try {
                 return (T) ObjectUtils.convertValue(stored, type);
             } catch (RuntimeException fallback) {
+                e.addSuppressed(fallback);
                 logger.error("Stored value for key '{}' could not be deserialized as {}", key, type.getName(), e);
                 throw new DataStorageException("Stored value for key '" + key
                         + "' could not be deserialized as " + type.getName(), e);
@@ -123,7 +124,7 @@ public class DefaultDataStorageService implements DataStorageService {
         } else {
             String text;
             try {
-                text = value instanceof String string ? string : gson.toJson(value);
+                text = toText(value);
             } catch (JsonParseException | StackOverflowError e) {
                 logger.error("Could not serialize value of type {} for key '{}'", value.getClass().getName(), key, e);
                 throw new DataStorageException("Could not serialize value for key '" + key + "'", e);
@@ -133,6 +134,16 @@ public class DefaultDataStorageService implements DataStorageService {
             logger.debug("Saved key '{}' as {} ({} characters)", key, value.getClass().getName(), text.length());
         }
         flush(key);
+    }
+
+    private String toText(Object value) {
+        if (value instanceof Enum<?> constant) {
+            return constant.name();
+        }
+        if (value instanceof String || value instanceof Character) {
+            return value.toString();
+        }
+        return gson.toJson(value);
     }
 
     private void checkKey(String key) {

@@ -1,5 +1,15 @@
 package io.github.itech_framework.core.utils;
 
+import java.io.File;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.nio.file.Path;
+import java.time.DateTimeException;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+
 public class ObjectUtils {
 
     @SuppressWarnings({ "unchecked", "rawtypes" })
@@ -33,7 +43,15 @@ public class ObjectUtils {
             if (type == short.class || type == Short.class) return Short.parseShort(text);
             if (type == byte.class || type == Byte.class) return Byte.parseByte(text);
             if (type.isEnum()) return Enum.valueOf((Class<Enum>) type, text);
-        } catch (IllegalArgumentException e) {
+            if (type == BigDecimal.class) return new BigDecimal(text);
+            if (type == BigInteger.class) return new BigInteger(text);
+            if (type == Path.class) return Path.of(text);
+            if (type == File.class) return new File(text);
+            if (type == Duration.class) return Duration.parse(text);
+            if (type == LocalDate.class) return LocalDate.parse(text);
+            if (type == LocalDateTime.class) return LocalDateTime.parse(text);
+            if (type == LocalTime.class) return LocalTime.parse(text);
+        } catch (IllegalArgumentException | DateTimeException e) {
             throw new IllegalArgumentException(
                     "Cannot convert value '" + value + "' to type " + type.getSimpleName(), e);
         }

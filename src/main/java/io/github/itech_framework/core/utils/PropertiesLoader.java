@@ -25,6 +25,8 @@ public class PropertiesLoader {
     private static final Map<String, Properties> fileCache = new LinkedHashMap<>();
     private static volatile Properties properties = new Properties();
     private static volatile String activeProfile = DEFAULT_PROFILE;
+    
+    public record Snapshot(Set<String> files, Map<String, Properties> cache, Properties properties, String profile) {}
 
     public static synchronized void load(String[] filenames, Class<?> clazz) {
         if (filenames == null) {
@@ -35,8 +37,9 @@ public class PropertiesLoader {
 
         for (String filename : filenames) {
             String normalized = normalize(filename);
-            if (loadedBaseFiles.add(normalized)) {
+            if (!loadedBaseFiles.contains(normalized)) {
                 fileCache.put(normalized, readRequired(normalized, classLoader));
+                loadedBaseFiles.add(normalized);
             }
         }
 
@@ -160,5 +163,25 @@ public class PropertiesLoader {
         } catch (IOException | IllegalArgumentException e) {
             throw new FrameworkException("Error loading properties file: " + filename, e);
         }
+    }
+    
+    public static synchronized Snapshot snapshot() {
+        return new Snapshot(new LinkedHashSet<>(loadedBaseFiles), new LinkedHashMap<>(fileCache), properties, activeProfile);
+    }
+    
+    public static synchronized void restore(Snapshot snapshot) {
+        loadedBaseFiles.clear();
+        loadedBaseFiles.addAll(snapshot.files());
+        fileCache.clear();
+        fileCache.putAll(snapshot.cache());
+        properties = snapshot.properties();
+        activeProfile = snapshot.profile();
+    }
+
+    public static synchronized void reset() {
+        loadedBaseFiles.clear();
+        fileCache.clear();
+        properties = new Properties();
+        activeProfile = DEFAULT_PROFILE;
     }
 }

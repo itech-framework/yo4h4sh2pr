@@ -2,24 +2,35 @@ package io.github.itech_framework.core.utils.validator;
 
 import java.math.BigDecimal;
 import java.text.DateFormat;
+import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
 import java.util.Collection;
+import java.util.Date;
+import java.util.regex.Pattern;
 
 public class CommonValidator {
+	
+	private static final Pattern NUMERIC = Pattern.compile("[+-]?(\\d+(\\.\\d*)?|\\.\\d+)([eE][+-]?\\d+)?");
+	
     public static boolean isValidObject(Object obj) {
         return obj != null;
     }
 
     public static boolean isValidDate(String dateStr, String dateFormat) {
+        if (dateStr == null || dateFormat == null) {
+            return false;
+        }
         try {
             DateFormat df = new SimpleDateFormat(dateFormat);
             df.setLenient(false);
-            df.parse(dateStr);
-            return true;
-        } catch (Exception e) {
+            ParsePosition position = new ParsePosition(0);
+            Date parsed = df.parse(dateStr, position);
+            return parsed != null && position.getIndex() == dateStr.length();
+        } catch (IllegalArgumentException e) {
             return false;
         }
     }
+
 
     public static boolean validInteger(Integer value) {
         return value != null && value > 0;
@@ -50,15 +61,7 @@ public class CommonValidator {
     }
 
     public static boolean isNumeric(String strNum) {
-        if (isEmpty(strNum)) {
-            return false;
-        }
-        try {
-            Double.parseDouble(strNum);
-        } catch (NumberFormatException nfe) {
-            return false;
-        }
-        return true;
+        return !isEmpty(strNum) && NUMERIC.matcher(strNum.trim()).matches();
     }
 
     public static boolean isValidLongValue(String strLong) {

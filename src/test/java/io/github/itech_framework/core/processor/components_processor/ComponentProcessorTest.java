@@ -16,18 +16,20 @@ import io.github.itech_framework.core.processor.components_processor.fixtures.fa
 import io.github.itech_framework.core.processor.components_processor.fixtures.ok.OkApp;
 import io.github.itech_framework.core.processor.components_processor.fixtures.ok.OkService;
 import io.github.itech_framework.core.store.ComponentStore;
+import io.github.itech_framework.core.utils.PropertiesLoader;
 
 class ComponentProcessorTest {
 
-    @BeforeEach
-    void resetState() {
-        ApplicationContext existing = ComponentProcessor.context();
-        if (existing != null) {
-            existing.close();
-        }
-        OkService.DESTROYED.set(0);
-        CreatedFirst.DESTROYED.set(0);
-    }
+	@BeforeEach
+	void resetState() {
+	    ApplicationContext existing = ComponentProcessor.context();
+	    if (existing != null) {
+	        existing.close();
+	    }
+	    PropertiesLoader.reset();
+	    OkService.DESTROYED.set(0);
+	    CreatedFirst.DESTROYED.set(0);
+	}
 
     @Test
     void failsWithAClearMessageWhenComponentScanIsMissing() {

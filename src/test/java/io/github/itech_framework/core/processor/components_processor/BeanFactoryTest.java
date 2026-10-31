@@ -5,7 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.github.itech_framework.core.annotations.dependency.Use;
+import io.github.itech_framework.core.annotations.methods.PreDestroy;
 import io.github.itech_framework.core.exceptions.FrameworkException;
 import io.github.itech_framework.core.resourcecs.CleanupRegistry;
 import io.github.itech_framework.core.store.ComponentStore;
@@ -49,6 +52,40 @@ class BeanFactoryTest {
 
     private ComponentStore globalBefore;
     private ComponentStore unrelatedGlobal;
+    
+    static final List<String> EVENTS = new ArrayList<>();
+
+    public static class DestroyConfig {
+        @PreDestroy
+        void stop() {
+            EVENTS.add("config");
+        }
+    }
+
+    public static class DestroyDao {
+        @Use
+        DestroyConfig config;
+
+        @PreDestroy
+        void stop() {
+            EVENTS.add("dao");
+        }
+    }
+
+    @Test
+    void destroysDependentsBeforeDependencies() {
+        EVENTS.clear();
+        ComponentStore store = new ComponentStore();
+        CleanupRegistry cleanup = new CleanupRegistry();
+        BeanFactory factory = new BeanFactory(store, cleanup);
+        factory.define(BeanDefinition.ofClass(DestroyConfig.class.getName(), DestroyConfig.class, 3, List.of()));
+        factory.define(BeanDefinition.ofClass(DestroyDao.class.getName(), DestroyDao.class, 0, List.of()));
+
+        factory.start();
+        cleanup.cleanup();
+
+        assertEquals(List.of("dao", "config"), EVENTS);
+    }
 
     @BeforeEach
     void swapGlobalStore() {

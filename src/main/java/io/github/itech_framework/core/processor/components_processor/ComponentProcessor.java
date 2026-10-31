@@ -58,55 +58,59 @@ public class ComponentProcessor {
 		});
 	}
 
-	public static ApplicationContext initialize(Class<?> clazz, Consumer<ComponentStore> preStart) throws Exception {
-		ComponentScan componentScan = clazz.getAnnotation(ComponentScan.class);
-		if (componentScan == null) {
-			throw new FrameworkException("""
-					Class %s is missing @ComponentScan, so no components would be registered.
-					Add @ComponentScan(basePackage = "your.base.package") to this class, \
-					or pass the class that carries it to initialize().
-					""".formatted(clazz.getName()));
-		}
+	public static synchronized ApplicationContext initialize(Class<?> clazz, Consumer<ComponentStore> preStart) throws Exception {
+	    ComponentScan componentScan = clazz.getAnnotation(ComponentScan.class);
+	    if (componentScan == null) {
+	        throw new FrameworkException("""
+	                Class %s is missing @ComponentScan, so no components would be registered.
+	                Add @ComponentScan(basePackage = "your.base.package") to this class, \
+	                or pass the class that carries it to initialize().
+	                """.formatted(clazz.getName()));
+	    }
 
-		PropertiesLoader.load(componentScan.properties(), clazz);
+	    PropertiesLoader.Snapshot propertiesBefore = PropertiesLoader.snapshot();
+	    ComponentStore previousStore = ComponentStore.current();
+	    CleanupRegistry previousCleanup = CleanupRegistry.current();
+	    BeanFactory previousFactory = beanFactory;
+	    ApplicationContext previous = context;
 
-		ComponentStore previousStore = ComponentStore.current();
-		CleanupRegistry previousCleanup = CleanupRegistry.current();
-		ApplicationContext previous = context;
+	    ComponentStore store = new ComponentStore();
+	    CleanupRegistry cleanupRegistry = new CleanupRegistry();
+	    BeanFactory factory = new BeanFactory(store, cleanupRegistry);
+	    ApplicationContext created = new ApplicationContext(store, cleanupRegistry, factory);
 
-		ComponentStore store = new ComponentStore();
-		CleanupRegistry cleanupRegistry = new CleanupRegistry();
-		BeanFactory factory = new BeanFactory(store, cleanupRegistry);
-		ApplicationContext created = new ApplicationContext(store, cleanupRegistry, factory);
+	    ComponentStore.setCurrent(store);
+	    CleanupRegistry.setCurrent(cleanupRegistry);
+	    beanFactory = factory;
+	    context = created;
+	    try {
+	        PropertiesLoader.load(componentScan.properties(), clazz);
+	        populate(clazz, componentScan, store, cleanupRegistry, factory);
+	        preStart.accept(store);
+	        factory.start();
+	    } catch (Throwable failure) {
+	        try {
+	            created.close();
+	        } catch (RuntimeException suppressed) {
+	            failure.addSuppressed(suppressed);
+	        }
+	        beanFactory = previousFactory;
+	        context = previous;
+	        ComponentStore.setCurrent(previousStore);
+	        CleanupRegistry.setCurrent(previousCleanup);
+	        PropertiesLoader.restore(propertiesBefore);
+	        throw failure;
+	    }
 
-		ComponentStore.setCurrent(store);
-		CleanupRegistry.setCurrent(cleanupRegistry);
-		try {
-			populate(clazz, componentScan, store, cleanupRegistry, factory);
-			preStart.accept(store);
-			factory.start();
-		} catch (Throwable failure) {
-			try {
-				created.close();
-			} catch (RuntimeException suppressed) {
-				failure.addSuppressed(suppressed);
-			}
-			ComponentStore.setCurrent(previousStore);
-			CleanupRegistry.setCurrent(previousCleanup);
-			throw failure;
-		}
-
-		beanFactory = factory;
-		context = created;
-		if (previous != null) {
-			try {
-				previous.close();
-			} catch (RuntimeException e) {
-				logger.warn("Previous application context did not close cleanly", e);
-			}
-		}
-		registerShutdownHook();
-		return created;
+	    if (previous != null) {
+	        try {
+	            previous.close();
+	        } catch (RuntimeException e) {
+	            logger.warn("Previous application context did not close cleanly", e);
+	        }
+	    }
+	    registerShutdownHook();
+	    return created;
 	}
 
 	private static void populate(Class<?> clazz, ComponentScan componentScan, ComponentStore store,
@@ -129,7 +133,13 @@ public class ComponentProcessor {
 		Boolean jpaAvailable = null;
 		String basePackage = componentScan.basePackage().isBlank() ? clazz.getPackageName()
 				: componentScan.basePackage();
-		for (Class<?> candidate : PackageClassesLoader.findAllClasses(basePackage, clazz)) {
+		List<Class<?>> found = PackageClassesLoader.findAllClasses(basePackage, clazz,
+		        componentScan.excludePackages(), componentScan.failOnLoadError());
+		if (found.isEmpty()) {
+		    throw new FrameworkException("No classes found in base package '" + basePackage
+		            + "'. Check @ComponentScan(basePackage = ...) for typos.");
+		}
+		for (Class<?> candidate : found) {
 			if (isJpaEntity(candidate)) {
 				if (jpaAvailable == null) {
 					jpaAvailable = isJpaModuleAvailable(store);

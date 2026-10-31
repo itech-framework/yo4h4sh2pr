@@ -10,13 +10,15 @@ import java.lang.annotation.Target;
 /**
  * Marks a class as a service component in the business logic layer.
  * <p>
- * Indicates that the annotated class contains core business rules and workflow
- * implementations. This is the replacement for the deprecated {@link BusinessLogic}
- * annotation and provides the same functionality with a more conventional name.
+ * Specialization of {@link Component} for classes that hold business rules and
+ * workflows. Service components have level 1: they are created after data access
+ * components (level 0) and before presentation components (level 2). This is the
+ * replacement for the deprecated {@link BusinessLogic}.
  * </p>
  *
  * @author Sai Zaw Myint
  * @since 1.1.0
+ * @version 1.1.0
  * @see Component
  * @see BusinessLogic
  */

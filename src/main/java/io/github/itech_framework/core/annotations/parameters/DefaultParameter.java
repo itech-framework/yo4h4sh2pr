@@ -8,51 +8,41 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Specifies a default value for a method parameter
+ * Supplies a fallback value for a parameter the framework cannot resolve from a component.
  * <p>
- * Provides fallback values when no argument is supplied for the annotated parameter.
- * The framework will automatically convert the string value to the parameter's declared type.
+ * Applies to constructor parameters, {@code @Component} factory method parameters and
+ * {@code @OnInit} method parameters. If a registered component matches the parameter,
+ * that component is used and this value is ignored; otherwise the string value is
+ * converted to the parameter type. A parameter with no matching component and no
+ * {@code @DefaultParameter} stops startup with a clear error.
  * </p>
- * 
- * <p>Common use cases:</p>
- * <ul>
- *   <li>Configuration parameters with default settings</li>
- *   <li>Optional dependencies with fallback implementations</li>
- *   <li>Method arguments requiring default values</li>
- * </ul>
  *
  * <p>Example:</p>
  * <pre>{@code
  * @OnInit
- * public void configure(
- *     @DefaultParameter("8080") int port,
- *     @DefaultParameter("development") String environment
- * ) {
- *     // Method implementation
- * }
+ * void configure(@DefaultParameter("8080") int port,
+ *                @DefaultParameter("development") String environment) { }
  * }</pre>
  *
  * @author Sai Zaw Myint
  * @since 1.0.0
+ * @version 1.1.0
  * @see Component
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.PARAMETER)
 public @interface DefaultParameter {
     /**
-     * The default value to use when no argument is provided
+     * The default value, written as text.
      * <p>
-     * Value will be converted to the parameter's declared type using the framework's
-     * type conversion system. Supported conversions include:
+     * Supported target types: {@code String}, {@code char}, all primitives and their
+     * wrappers, enums (exact constant name), {@code BigDecimal}, {@code BigInteger},
+     * {@code Path}, {@code File}, {@code Duration} (ISO-8601 such as {@code PT5S}),
+     * {@code LocalDate}, {@code LocalDateTime} and {@code LocalTime}. Any other type
+     * fails with an {@code UnsupportedOperationException}.
      * </p>
-     * <ul>
-     *   <li>Primitive types and their wrapper classes</li>
-     *   <li>Strings</li>
-     *   <li>Enums (using valueOf)</li>
-     *   <li>Custom types with appropriate converters</li>
-     * </ul>
-     * 
-     * @return The default value as a String representation
+     *
+     * @return the default value as a String
      */
     String value();
 }
