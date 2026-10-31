@@ -1,7 +1,6 @@
 package io.github.itech_framework.core.utils;
 
 import java.lang.reflect.Field;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -69,13 +68,16 @@ public class DataStorageUtil {
     }
 
     private static Optional<Field> findField(Object component, String key) {
-        return Arrays.stream(component.getClass().getDeclaredFields())
-                .filter(f -> {
-                    DataStorage annotation = f.getAnnotation(DataStorage.class);
-                    return annotation != null
-                            && (annotation.key().isEmpty() ? f.getName() : annotation.key()).equals(key);
-                })
-                .findFirst();
+        for (Class<?> type = component.getClass(); type != null && type != Object.class; type = type.getSuperclass()) {
+            for (Field field : type.getDeclaredFields()) {
+                DataStorage annotation = field.getAnnotation(DataStorage.class);
+                if (annotation != null
+                        && (annotation.key().isEmpty() ? field.getName() : annotation.key()).equals(key)) {
+                    return Optional.of(field);
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     private static void setFieldValue(Object component, Field field, String key, Object value) {

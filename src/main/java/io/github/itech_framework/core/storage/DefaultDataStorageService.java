@@ -10,17 +10,57 @@ import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
 
 import io.github.itech_framework.core.exceptions.DataStorageException;
+import io.github.itech_framework.core.utils.ObjectUtils;
 
 public class DefaultDataStorageService implements DataStorageService {
     private static final Logger logger = LogManager.getLogger(DefaultDataStorageService.class);
+
+    static final String LEGACY_NODE_PATH = "io/github/itech_framework/core/storage";
+    static final String MIGRATION_MARKER = "itech.legacy.migrated";
 
     private final Preferences prefs;
     private final Gson gson;
 
     public DefaultDataStorageService(Class<?> appClass) {
-        this.prefs = Preferences.userNodeForPackage(appClass);
+        this(Preferences.userNodeForPackage(appClass), existingLegacyNode());
+    }
+
+    DefaultDataStorageService(Preferences prefs, Preferences legacyPrefs) {
+        this.prefs = prefs;
         this.gson = new Gson();
+        migrateLegacyValues(legacyPrefs);
         logger.debug("Data storage initialized for node '{}'", prefs.absolutePath());
+    }
+
+    private static Preferences existingLegacyNode() {
+        try {
+            Preferences root = Preferences.userRoot();
+            return root.nodeExists(LEGACY_NODE_PATH) ? root.node(LEGACY_NODE_PATH) : null;
+        } catch (BackingStoreException | RuntimeException e) {
+            logger.warn("Could not inspect the legacy storage node", e);
+            return null;
+        }
+    }
+
+    private void migrateLegacyValues(Preferences legacy) {
+        if (legacy == null || prefs.get(MIGRATION_MARKER, null) != null) {
+            return;
+        }
+        try {
+            int copied = 0;
+            for (String key : legacy.keys()) {
+                String value = legacy.get(key, null);
+                if (value != null && prefs.get(key, null) == null) {
+                    prefs.put(key, value);
+                    copied++;
+                }
+            }
+            prefs.put(MIGRATION_MARKER, "true");
+            prefs.flush();
+            logger.info("Migrated {} values from the legacy shared storage node", copied);
+        } catch (BackingStoreException | RuntimeException e) {
+            logger.warn("Could not migrate values from the legacy shared storage node", e);
+        }
     }
 
     @Override
@@ -50,21 +90,27 @@ public class DefaultDataStorageService implements DataStorageService {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public <T> T load(String key, Class<T> type) {
         checkKey(key);
-        String json = prefs.get(key, null);
-        if (json == null) {
+        String stored = prefs.get(key, null);
+        if (stored == null) {
             logger.debug("No value found for key '{}' (requested type {})", key, type.getName());
             return null;
         }
+        if (type == String.class) {
+            return (T) stored;
+        }
         try {
-            T result = gson.fromJson(json, type);
-            logger.debug("Loaded key '{}' as {} ({} characters)", key, type.getName(), json.length());
-            return result;
+            return gson.fromJson(stored, type);
         } catch (JsonParseException e) {
-            logger.error("Stored value for key '{}' could not be deserialized as {}", key, type.getName(), e);
-            throw new DataStorageException("Stored value for key '" + key
-                    + "' could not be deserialized as " + type.getName(), e);
+            try {
+                return (T) ObjectUtils.convertValue(stored, type);
+            } catch (RuntimeException fallback) {
+                logger.error("Stored value for key '{}' could not be deserialized as {}", key, type.getName(), e);
+                throw new DataStorageException("Stored value for key '" + key
+                        + "' could not be deserialized as " + type.getName(), e);
+            }
         }
     }
 
@@ -75,16 +121,16 @@ public class DefaultDataStorageService implements DataStorageService {
             prefs.remove(key);
             logger.debug("Removed key '{}'", key);
         } else {
-            String json;
+            String text;
             try {
-                json = gson.toJson(value);
+                text = value instanceof String string ? string : gson.toJson(value);
             } catch (JsonParseException | StackOverflowError e) {
                 logger.error("Could not serialize value of type {} for key '{}'", value.getClass().getName(), key, e);
                 throw new DataStorageException("Could not serialize value for key '" + key + "'", e);
             }
-            checkValue(key, json);
-            prefs.put(key, json);
-            logger.debug("Saved key '{}' as {} ({} characters)", key, value.getClass().getName(), json.length());
+            checkValue(key, text);
+            prefs.put(key, text);
+            logger.debug("Saved key '{}' as {} ({} characters)", key, value.getClass().getName(), text.length());
         }
         flush(key);
     }

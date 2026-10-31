@@ -98,7 +98,7 @@ final class BeanFactory {
         for (BeanDefinition definition : sorted) {
             singleton(definition, new LinkedHashSet<>());
         }
-        for (Object instance : ComponentStore.current().getAllComponents()) {
+        for (Object instance : store.getAllComponents()) {
             initialize(instance, new LinkedHashSet<>());
         }
         creationDependencies.clear();
@@ -188,17 +188,17 @@ final class BeanFactory {
     }
 
     private void register(BeanDefinition definition, Object instance) {
-        ComponentStore.current().registerComponent(definition.key(), instance, definition.level());
+        store.registerComponent(definition.key(), instance, definition.level());
         for (String alias : definition.aliases()) {
             if (byKey.get(alias) == definition) {
-                ComponentStore.current().registerComponent(alias, instance, definition.level());
+                store.registerComponent(alias, instance, definition.level());
             }
         }
         if (definition.isFactory() && !AnnotationUtils.hasAnnotation(instance.getClass(), IgnoreInterfaces.class)) {
             for (Class<?> iface : instance.getClass().getInterfaces()) {
                 String name = iface.getName();
                 if (!byKey.containsKey(name) && !store.hasComponent(name)) {
-                    ComponentStore.current().registerComponent(name, instance, definition.level());
+                    store.registerComponent(name, instance, definition.level());
                 }
             }
         }
@@ -225,7 +225,7 @@ final class BeanFactory {
         }
         injectFields(metadata, instance, path);
         runInit(metadata, instance);
-        registerDestroy(metadata, instance, ComponentStore.current().levelOf(instance));
+        registerDestroy(metadata, instance, store.levelOf(instance));
     }
 
     private Constructor<?> selectConstructor(Class<?> type) {
@@ -352,7 +352,7 @@ final class BeanFactory {
     }
 
     private Object uniqueInstance(Class<?> type) {
-        List<?> found = ComponentStore.current().findByType(type);
+        List<?> found = store.findByType(type);
         if (found.size() > 1) {
             throw new FrameworkException("Multiple components match type " + type.getName()
                     + ". Use @Use(name = \"...\") to choose one.");
@@ -414,7 +414,7 @@ final class BeanFactory {
         DataStorage dataStorage = plan.storage();
         Field field = plan.field();
         String key = dataStorage.key().isEmpty() ? field.getName() : dataStorage.key();
-        DataStorageService service = (DataStorageService) ComponentStore.current().getComponent(DataStorageService.class.getName());
+        DataStorageService service = (DataStorageService) store.getComponent(DataStorageService.class.getName());
         if (service == null) {
             throw new IllegalStateException("No StorageService available for @DataStorage");
         }
@@ -443,7 +443,7 @@ final class BeanFactory {
             if (definition != null) {
                 return concreteType(definition.key());
             }
-            List<?> found = ComponentStore.current().findByType(fieldType);
+            List<?> found = store.findByType(fieldType);
             if (found.size() == 1) {
                 return found.get(0).getClass();
             }
